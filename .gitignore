@@ -1,0 +1,13 @@
+node_modules
+dist
+.vite
+*.log
+.DS_Store
+.env
+.env.*
+.claude/settings.local.json
+
+# Internal working files (kept locally, not published)
+CLAUDE.md
+docs/
+.claude/
