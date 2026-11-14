@@ -20,6 +20,7 @@ import {
   AXIS_MIN_DISTANCE_MM,
   AXIS_MIN_DISTANCE_PX,
   CALIBRATION_LABELS,
+  HOW_TO_SCAN,
   MEASURE_DEPTH_MM,
   MESSAGES,
   PHANTOM_ONSD_DEFAULT_MM,
@@ -164,6 +165,7 @@ export default function MeasureScreen({ onResult }) {
   const [measurement, setMeasurement] = useState(null);
   const [manualPts, setManualPts] = useState([]);
   const [proposal, setProposal] = useState(null); // auto-detect result waiting for Accept / Re-pick
+  const [helpOpen, setHelpOpen] = useState(false);
   const [notice, setNotice] = useState('');
 
   const scaled = calibration?.mode === 'scaleBar' || calibration?.mode === 'depth';
@@ -593,11 +595,38 @@ export default function MeasureScreen({ onResult }) {
     <div className="measure-layout">
       <section className="card measure-card">
         <div className="measure-header">
-          <h2>ONSD measurement</h2>
+          <h2 className="title-with-help">
+            ONSD measurement
+            <button
+              className="help-btn"
+              onClick={() => setHelpOpen((o) => !o)}
+              aria-expanded={helpOpen}
+              aria-controls="how-to-scan-help"
+              title="How to scan"
+            >
+              ?
+            </button>
+          </h2>
           <button className="btn btn-ghost" onClick={reset} disabled={!source}>
             Reset
           </button>
         </div>
+
+        {helpOpen && (
+          <div id="how-to-scan-help" className="help-panel" role="region" aria-label="How to scan">
+            <div className="help-panel-head">
+              <strong>How to scan</strong>
+              <button className="eye-tooltip-close" onClick={() => setHelpOpen(false)} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <ol>
+              {HOW_TO_SCAN.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ol>
+          </div>
+        )}
 
         <ol className="steps">
           {STEPS.map((s) => (

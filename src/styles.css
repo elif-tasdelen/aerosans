@@ -371,7 +371,34 @@ p { margin: 0.4rem 0; }
 .legend-opticNerve { background: #f5e6c8; }
 .legend-sheath { background: linear-gradient(90deg, var(--green), var(--yellow), var(--red)); }
 
-.app-footer { margin-top: 28px; text-align: center; }
+/* Help button, trend chart, why-the-eye card, footer */
+.title-with-help { display: flex; align-items: center; gap: 8px; }
+.help-btn {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
+  font-weight: 700; cursor: pointer;
+}
+.help-panel { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--panel-2); position: relative; }
+.help-panel-head { display: flex; justify-content: space-between; align-items: center; }
+.help-panel ol { padding-left: 20px; margin: 6px 0 0; font-size: 0.9rem; }
+.trend-card, .why-card { margin-top: 18px; }
+.trend-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.trend-header h2 { margin: 0; }
+.simulated-label { margin: 2px 0 0; color: var(--muted); font-size: 0.85rem; font-style: italic; }
+.trend-latest { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.trend-chart { position: relative; height: 320px; margin: 10px 0; }
+.why-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.why-card h3 { margin: 8px 0 4px; font-size: 1rem; }
+.gene-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.gene-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.gene-table th, .gene-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--border); }
+.volcano { margin: 0; }
+.volcano img { width: 100%; border-radius: 8px; background: #fff; }
+.app-footer { margin-top: 28px; text-align: left; }
+.app-footer h3 { font-size: 0.95rem; color: var(--text); margin: 14px 0 4px; }
+.app-footer ol { padding-left: 20px; margin: 0; }
+.app-footer a { color: var(--accent); word-break: break-all; }
+@media (max-width: 980px) { .why-layout, .gene-tables { grid-template-columns: 1fr; } }
 
 @media (max-width: 980px) {
   .measure-layout { grid-template-columns: 1fr; }

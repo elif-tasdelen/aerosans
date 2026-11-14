@@ -22,14 +22,32 @@ export function buildEye() {
   const pickables = [];
   const anchors = {};
 
-  // Globe (sclera): semi-transparent so the retina and nerve stay visible.
+  // Globe (sclera): semi-transparent so the retina and nerve stay visible. Subtle procedural
+  // shading via vertex colors: brighter white toward the cornea, slightly warmer/greyer behind.
+  const globeGeo = new THREE.SphereGeometry(1, 64, 48);
+  {
+    const pos = globeGeo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const front = new THREE.Color(0xf8fafc);
+    const back = new THREE.Color(0xd6d3d1);
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const t = (pos.getX(i) + 1) / 2; // 0 at the cornea side, 1 at the posterior pole
+      c.copy(front).lerp(back, t * t);
+      // faint vessel-like streaks near the equator (deterministic, procedural)
+      const streak = 0.03 * Math.max(0, Math.sin(9 * Math.atan2(pos.getZ(i), pos.getY(i)))) * (1 - Math.abs(pos.getX(i)));
+      colors.set([c.r - streak * 0.2, c.g - streak, c.b - streak], i * 3);
+    }
+    globeGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
   const globe = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 64, 48),
+    globeGeo,
     new THREE.MeshStandardMaterial({
-      color: 0xe8edf3,
-      roughness: 0.4,
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.35,
       transparent: true,
-      opacity: 0.32,
+      opacity: 0.36,
       depthWrite: false,
       side: THREE.DoubleSide,
     })
@@ -66,13 +84,42 @@ export function buildEye() {
   cornea.position.x = -0.7;
   group.add(cornea);
 
+  // Procedural iris: radial fibres and a darker limbal ring, drawn with vertex colors (no textures).
+  const irisGeo = new THREE.RingGeometry(0.11, 0.33, 128, 8);
+  {
+    const pos = irisGeo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const inner = new THREE.Color(0x7c5a2e); // warm collarette near the pupil
+    const mid = new THREE.Color(0x3b6ea8);
+    const limbus = new THREE.Color(0x1e3150);
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const r = (Math.hypot(x, y) - 0.11) / 0.22; // 0 at the pupil, 1 at the limbus
+      const a = Math.atan2(y, x);
+      if (r < 0.3) c.copy(inner).lerp(mid, r / 0.3);
+      else c.copy(mid).lerp(limbus, Math.max(0, (r - 0.7) / 0.3));
+      const fibre = 0.85 + 0.15 * Math.sin(a * 48 + 3 * Math.sin(a * 7)) * Math.sin(a * 13 + r * 4);
+      colors.set([c.r * fibre, c.g * fibre, c.b * fibre], i * 3);
+    }
+    irisGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
   const iris = new THREE.Mesh(
-    new THREE.RingGeometry(0.13, 0.33, 48),
-    new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.6, side: THREE.DoubleSide })
+    irisGeo,
+    new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, side: THREE.DoubleSide })
   );
   iris.rotation.y = -Math.PI / 2; // facing −X
   iris.position.x = -0.93;
   group.add(iris);
+
+  const pupil = new THREE.Mesh(
+    new THREE.CircleGeometry(0.112, 48),
+    new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.2, side: THREE.DoubleSide })
+  );
+  pupil.rotation.y = -Math.PI / 2;
+  pupil.position.x = -0.932;
+  group.add(pupil);
 
   const lens = new THREE.Mesh(
     new THREE.SphereGeometry(0.28, 32, 16),

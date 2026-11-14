@@ -49,8 +49,15 @@ Astronauts on Space Missions"*
 - Result card: ONSD, method, confidence, calibration mode, colour-coded risk badge, ICP range (mmH₂O and
   mmHg), Wang 2017 limitation note, "What to do now" action and "How to scan" instructions. Risk, ICP
   and actions appear only with a real scale. Phantoms show ground truth vs measured error.
-- Procedural 3D eye (Three.js, no external models): the optic nerve sheath widens and shifts from green
-  to yellow to red with ONSD. Parts are clickable and explain their function and status.
+- Procedural 3D eye (Three.js, no external models or textures): side view with the optic nerve running
+  horizontally; the sheath widens with ONSD and uses the risk colors (green / amber / red, grey without
+  a scale). Procedural iris and pupil, subtle sclera shading and a soft rim light. Parts are clickable
+  and explain their function and status.
+- **Mission trend chart** (Chart.js): 180 days of simulated ONSD for Crew Member A, points and segments
+  colored by risk, dashed threshold lines at 5.0 and 5.7 mm.
+- **"How to scan" help:** a "?" button next to the measurement title opens the scanning steps.
+- **"Why the eye?" card:** SANS background, NASA OSDR OSD-397 mouse-retina genes and the volcano plot.
+- Footer with the limitations and a short reference list.
 
 ## How to run
 
@@ -92,6 +99,8 @@ AI-assisted files: all files in src/ and tests/, index.html, vite.config.js, pub
 - **NASA HRP — 5 Hazards of Human Spaceflight** and **Risks of Human Spaceflight** — public resources
   used for background and framing: https://www.nasa.gov/hrp/hazards/ · https://www.nasa.gov/hrp/risks/
 - Mission trend data is simulated (fictional Crew Member A) and labeled as such in the app.
+- **OSD-397 volcano plot** (`public/osd397_volcano.png`, added by the biomedical team member): exported
+  from the NASA OSDR Visualization Portal for study OSD-397. If the file is missing, the app hides it.
 - All crew data shown in the app is **simulated** and labelled as such. Crew names are fictional.
 - No NASA logos, insignia or mission patches are used.
 
@@ -121,6 +130,8 @@ AI-assisted files: all files in src/ and tests/, index.html, vite.config.js, pub
 |---|---|---|
 | React / React DOM | 18.3.1 | MIT |
 | three (Three.js) | 0.170.0 | MIT |
+| Chart.js | 4.4.6 | MIT |
+| react-chartjs-2 | 5.2.0 | MIT |
 | Vite | 5.4.11 | MIT |
 | @vitejs/plugin-react | 4.3.4 | MIT |
 | Vitest | 2.1.8 | MIT |

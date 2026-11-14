@@ -198,4 +198,34 @@ export const EYE_STATE_TEXT = {
 export const EYE_VIEW_NOTE =
   'Illustrative model, approximately to scale. Colors are for orientation only. Click a part to learn more.';
 
+export const OSD397_VOLCANO_CAPTION =
+  'NASA OSDR OSD-397 volcano plot (Visualization Portal). x-axis: log2 fold change, Ground Control vs Space Flight (positive = lower in spaceflight). Mouse retina, 37-day mission; changes are modest and not directly transferable to humans.';
+
+/** Short reference list shown in the footer (same sources as README → References). */
+export const REFERENCES = [
+  {
+    text: 'Wang L-J, et al. Noninvasive and quantitative intracranial pressure estimation using ultrasonographic measurement of optic nerve sheath diameter. Sci Rep. 2017;7:42063.',
+    url: 'https://doi.org/10.1038/srep42063',
+  },
+  {
+    text: 'Maissan IM, et al. Ultrasonographic measured optic nerve sheath diameter as an accurate and quick monitor for changes in intracranial pressure. J Neurosurg. 2015;123(3):743-7.',
+    url: 'https://doi.org/10.3171/2014.10.JNS141197',
+  },
+  { text: 'Maissan IM, et al. Response [to: Optic nerve sheath diameter as ICP marker]. J Neurosurg. 2016;124(3):891.', url: null },
+  {
+    text: 'Soldatos T, et al. Optic nerve sonography in the diagnostic evaluation of adult brain injury. Crit Care. 2008;12(3):R67.',
+    url: 'https://doi.org/10.1186/cc6897',
+  },
+  {
+    text: 'Berhanu D, et al. The role of optic nerve sheath ultrasonography in increased intracranial pressure: a systematic review and meta-analysis. J Neurol Sci. 2023;454:120853.',
+    url: 'https://doi.org/10.1016/j.jns.2023.120853',
+  },
+  {
+    text: 'NASA OSDR OSD-397 — RNA-seq and RRBS on spaceflight mouse retina (Rodent Research-1).',
+    url: 'https://osdr.nasa.gov/bio/repo/data/studies/OSD-397',
+  },
+  { text: 'NASA HRP — 5 Hazards of Human Spaceflight.', url: 'https://www.nasa.gov/hrp/hazards/' },
+  { text: 'NASA HRP — Risks of Human Spaceflight.', url: 'https://www.nasa.gov/hrp/risks/' },
+];
+
 export const DISCLAIMER_TEXT = 'Research prototype — not a medical device. Not for diagnosis.';

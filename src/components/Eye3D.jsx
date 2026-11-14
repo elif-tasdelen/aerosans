@@ -78,12 +78,15 @@ export default function Eye3D({ latest }) {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(FOV_DEG, width / height, 0.1, 100);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const key = new THREE.DirectionalLight(0xffffff, 1.5);
-    key.position.set(2, 4, 6);
+    // Lighting: soft sky/ground fill, a key light from the viewer's upper side, and a soft rim
+    // light from behind (the camera looks along −Z) that outlines the globe and the nerve.
+    scene.add(new THREE.HemisphereLight(0xe0f2fe, 0x1e293b, 0.55));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    key.position.set(-2, 4, 6);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x93c5fd, 0.7);
-    rim.position.set(-4, -2, -4);
+    const rim = new THREE.DirectionalLight(0xbfdbfe, 1.1);
+    rim.position.set(1, 3, -6);
     scene.add(rim);
 
     // Model: nerve along +X, cornea toward −X, up +Y (see src/lib/eyeModel.js).
