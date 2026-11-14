@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { eyeViewState, nerveRadius, sheathColor, sheathRadius } from '../src/lib/eye.js';
-import { buildEye, defaultView, eyeBounds, fitDistance } from '../src/lib/eyeModel.js';
+import { buildEye, defaultView, eyeBounds, fitDistance, irisDirection } from '../src/lib/eyeModel.js';
 import { buildResultState } from '../src/lib/result.js';
 import { ONSD_BORDERLINE_MM, ONSD_HIGH_MM, PHANTOM_ONSD_MAX_MM, RISK_COLORS } from '../src/config.js';
 
@@ -51,10 +51,37 @@ describe('3D eye model orientation and framing', () => {
     expect(Math.abs(worldPos(eye.sheath).y) + Math.abs(worldPos(eye.sheath).z)).toBeLessThan(1e-9);
   });
 
-  it('the cornea side is on −X and up is +Y', () => {
-    const iris = eye.group.children.find((c) => c.geometry?.type === 'RingGeometry');
-    expect(worldPos(iris).x).toBeLessThan(-0.5);
+  it('the texture centre (iris) faces −X, on the optic axis opposite the nerve (within 2°)', () => {
+    // three.js convention check: the vertex with uv (0.5, 0.5) — the image centre — lies on local +X.
+    const geo = eye.globe.geometry;
+    const uv = geo.attributes.uv;
+    const pos = geo.attributes.position;
+    let centre = null;
+    for (let i = 0; i < uv.count; i++) {
+      if (Math.abs(uv.getX(i) - 0.5) < 1e-6 && Math.abs(uv.getY(i) - 0.5) < 1e-6) {
+        centre = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+        break;
+      }
+    }
+    expect(centre).not.toBeNull();
+    expect(centre.x).toBeCloseTo(1, 6);
+
+    const iris = irisDirection(eye);
+    const irisAngle = THREE.MathUtils.radToDeg(iris.angleTo(new THREE.Vector3(-1, 0, 0)));
+    expect(irisAngle).toBeLessThan(2);
+
+    const nerveDir = worldPos(eye.nerve).sub(worldPos(eye.globe)).normalize();
+    expect(THREE.MathUtils.radToDeg(nerveDir.angleTo(new THREE.Vector3(1, 0, 0)))).toBeLessThan(2);
+    expect(THREE.MathUtils.radToDeg(iris.angleTo(nerveDir))).toBeGreaterThan(178); // same axis, opposite sides
     expect(eye.group.up.y).toBe(1);
+  });
+
+  it('has no separate iris disc overlapping the textured globe', () => {
+    const discs = [];
+    eye.group.traverse((o) => {
+      if (['RingGeometry', 'CircleGeometry'].includes(o.geometry?.type)) discs.push(o);
+    });
+    expect(discs).toHaveLength(0);
   });
 
   for (const aspect of [1280 / 800, 1.7, 1.0, 0.6, 2.6]) {

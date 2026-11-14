@@ -12,6 +12,15 @@ export const NERVE_LENGTH = 2.2;
 export const NERVE_START_X = 0.95; // just inside the posterior globe wall
 export const SHEATH_LENGTH = NERVE_LENGTH - 0.45; // the far end of the nerve stays bare (easy to click)
 export const NERVE_AXIS = new THREE.Vector3(1, 0, 0);
+export const GLOBE_OPACITY = 0.82;
+export const EYE_TEXTURE_PATH = 'textures/eye.png';
+export const EYE_TEXTURE_LABEL = 'Eye texture: AI-generated (Gemini), edited';
+
+/** World direction in which the texture centre (the iris) points. */
+export function irisDirection(eye) {
+  eye.group.updateMatrixWorld(true);
+  return eye.globe.userData.textureCenterLocal.clone().transformDirection(eye.globe.matrixWorld);
+}
 
 /**
  * Build the eye. Returns the group, pickable meshes, tooltip anchors (group-local) and the
@@ -22,37 +31,25 @@ export function buildEye() {
   const pickables = [];
   const anchors = {};
 
-  // Globe (sclera): semi-transparent so the retina and nerve stay visible. Subtle procedural
-  // shading via vertex colors: brighter white toward the cornea, slightly warmer/greyer behind.
-  const globeGeo = new THREE.SphereGeometry(1, 64, 48);
-  {
-    const pos = globeGeo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const front = new THREE.Color(0xf8fafc);
-    const back = new THREE.Color(0xd6d3d1);
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const t = (pos.getX(i) + 1) / 2; // 0 at the cornea side, 1 at the posterior pole
-      c.copy(front).lerp(back, t * t);
-      // faint vessel-like streaks near the equator (deterministic, procedural)
-      const streak = 0.03 * Math.max(0, Math.sin(9 * Math.atan2(pos.getZ(i), pos.getY(i)))) * (1 - Math.abs(pos.getX(i)));
-      colors.set([c.r - streak * 0.2, c.g - streak, c.b - streak], i * 3);
-    }
-    globeGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  }
+  // Globe (sclera). The color map (public/textures/eye.png, AI-generated and edited, 2:1
+  // equirectangular, iris at the image centre) is loaded by the component and set on
+  // globe.material.map. SphereGeometry maps the image centre (u = 0.5) to +X, the nerve side,
+  // so the globe is turned 180° about Y to put the iris on −X, on the optic axis opposite the nerve.
+  // Slightly transparent so the retina and the start of the nerve remain visible.
   const globe = new THREE.Mesh(
-    globeGeo,
+    new THREE.SphereGeometry(1, 96, 64),
     new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      vertexColors: true,
-      roughness: 0.35,
+      roughness: 0.4,
       transparent: true,
-      opacity: 0.36,
+      opacity: GLOBE_OPACITY,
       depthWrite: false,
       side: THREE.DoubleSide,
     })
   );
+  globe.rotation.y = Math.PI;
   globe.userData.part = 'globe';
+  globe.userData.textureCenterLocal = new THREE.Vector3(1, 0, 0); // where the iris (image centre) lands
   globe.renderOrder = 2;
   group.add(globe);
   pickables.push(globe);
@@ -68,7 +65,7 @@ export function buildEye() {
   pickables.push(retina);
   anchors.retina = new THREE.Vector3(0.55, 0.55, 0.3);
 
-  // Front of the eye (−X): cornea, iris and lens. Orientation hints only, not clickable.
+  // Front of the eye (−X): transparent cornea and lens. Orientation hints only, not clickable.
   const cornea = new THREE.Mesh(
     new THREE.SphereGeometry(0.42, 40, 20, 0, Math.PI * 2, 0, Math.PI / 3),
     new THREE.MeshPhysicalMaterial({
@@ -84,43 +81,7 @@ export function buildEye() {
   cornea.position.x = -0.7;
   group.add(cornea);
 
-  // Procedural iris: radial fibres and a darker limbal ring, drawn with vertex colors (no textures).
-  const irisGeo = new THREE.RingGeometry(0.11, 0.33, 128, 8);
-  {
-    const pos = irisGeo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const inner = new THREE.Color(0x7c5a2e); // warm collarette near the pupil
-    const mid = new THREE.Color(0x3b6ea8);
-    const limbus = new THREE.Color(0x1e3150);
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const y = pos.getY(i);
-      const r = (Math.hypot(x, y) - 0.11) / 0.22; // 0 at the pupil, 1 at the limbus
-      const a = Math.atan2(y, x);
-      if (r < 0.3) c.copy(inner).lerp(mid, r / 0.3);
-      else c.copy(mid).lerp(limbus, Math.max(0, (r - 0.7) / 0.3));
-      const fibre = 0.85 + 0.15 * Math.sin(a * 48 + 3 * Math.sin(a * 7)) * Math.sin(a * 13 + r * 4);
-      colors.set([c.r * fibre, c.g * fibre, c.b * fibre], i * 3);
-    }
-    irisGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  }
-  const iris = new THREE.Mesh(
-    irisGeo,
-    new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, side: THREE.DoubleSide })
-  );
-  iris.rotation.y = -Math.PI / 2; // facing −X
-  iris.position.x = -0.93;
-  group.add(iris);
-
-  const pupil = new THREE.Mesh(
-    new THREE.CircleGeometry(0.112, 48),
-    new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.2, side: THREE.DoubleSide })
-  );
-  pupil.rotation.y = -Math.PI / 2;
-  pupil.position.x = -0.932;
-  group.add(pupil);
-
+  // (The iris and pupil come from the globe texture; no separate iris disc.)
   const lens = new THREE.Mesh(
     new THREE.SphereGeometry(0.28, 32, 16),
     new THREE.MeshStandardMaterial({ color: 0xf1f5f9, transparent: true, opacity: 0.55, roughness: 0.2 })

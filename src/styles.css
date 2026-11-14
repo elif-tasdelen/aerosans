@@ -326,6 +326,19 @@ p { margin: 0.4rem 0; }
   color: var(--muted);
   pointer-events: none;
 }
+/* Always-visible AI disclosure for the eye texture (shows in screenshots and recordings). */
+.eye-ai-label {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(6, 12, 24, 0.75);
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  pointer-events: none;
+  z-index: 1;
+}
 .eye-tooltip {
   position: absolute;
   width: 280px;

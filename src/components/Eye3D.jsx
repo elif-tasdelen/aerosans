@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { eyeViewState, sheathColor, sheathRadius } from '../lib/eye.js';
-import { buildEye, defaultView, eyeBounds } from '../lib/eyeModel.js';
+import { buildEye, defaultView, EYE_TEXTURE_LABEL, EYE_TEXTURE_PATH, eyeBounds } from '../lib/eyeModel.js';
 import {
   EYE_DEFAULT_ONSD_MM,
   EYE_PART_INFO,
@@ -92,6 +92,25 @@ export default function Eye3D({ latest }) {
     // Model: nerve along +X, cornea toward −X, up +Y (see src/lib/eyeModel.js).
     const eye = buildEye();
     const { group, pickables, anchors, sheath, ring } = eye;
+
+    // Globe color map (AI-generated, edited; labeled in the view). If it fails to load, the plain
+    // white globe stays — no error.
+    let disposed = false;
+    new THREE.TextureLoader().load(
+      `${import.meta.env.BASE_URL}${EYE_TEXTURE_PATH}`,
+      (tex) => {
+        if (disposed) {
+          tex.dispose();
+          return;
+        }
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        eye.globe.material.map = tex;
+        eye.globe.material.needsUpdate = true;
+      },
+      undefined,
+      () => {}
+    );
     scene.add(group);
     // Bounds with the sheath at its largest preview size, so swelling is never clipped.
     const bounds = eyeBounds(eye, sheathRadius(PHANTOM_ONSD_MAX_MM));
@@ -254,6 +273,8 @@ export default function Eye3D({ latest }) {
     apiRef.current = { setHighlight, projectPart, controls, resetView };
 
     return () => {
+      disposed = true;
+      eye.globe.material.map?.dispose();
       cancelAnimationFrame(rafId);
       ro.disconnect();
       io.disconnect();
@@ -359,6 +380,7 @@ export default function Eye3D({ latest }) {
             </button>
           </div>
           {SHOW_FPS && fps != null && <div className="eye-fps">{fps} fps</div>}
+          <div className="eye-ai-label">{EYE_TEXTURE_LABEL}</div>
         </div>
 
         <div className="eye-side">
