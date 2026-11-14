@@ -20,7 +20,7 @@ Astronauts on Space Missions"*
 - Computer Engineering (CS) member — software, measurement pipeline and UI
 - Biomedical Engineering (BIO) member — scientific content, thresholds and simulated data
 
-## Features (Phase A)
+## Features
 
 - Upload an ultrasound image or generate a deterministic **synthetic phantom** (ONSD 4.0–7.0 mm).
 - Scale calibration from two clicks on the scale bar (phantoms calibrate automatically).
@@ -40,14 +40,14 @@ npm run build    # production build in dist/
 
 ## Live demo
 
-_To be added after the first deploy (Phase D)._
+_To be added after deployment._
 
 ## AI Usage Declaration
 
 Portions of the source code were generated with AI assistance (Claude Code, Anthropic) and reviewed by
 the team. Every source file carries a header stating this. JSON files (e.g. `package.json`) cannot hold
 comments and are covered by this declaration. Scientific thresholds and texts are provided and reviewed
-by the team's biomedical engineering member. No AI-generated images are used.
+by the team's biomedical engineering member. The phantom ultrasound images and the favicon are rendered by AI-assisted code (no image-generation models are used). Phantom images carry a visible "SYNTHETIC PHANTOM" watermark.
 
 ## Data & Assets
 
