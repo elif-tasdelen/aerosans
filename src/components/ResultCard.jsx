@@ -14,6 +14,13 @@ import {
 
 const fmt = (v, digits = 0) => v.toFixed(digits);
 
+/** Signed error with 2 decimals; values that round to zero show as "0.00 mm" (no sign). */
+function formatSignedMm(diff) {
+  const abs = Math.abs(diff).toFixed(2);
+  if (abs === '0.00') return '0.00 mm';
+  return `${diff > 0 ? '+' : '−'}${abs} mm`;
+}
+
 function HowToScan({ open = false }) {
   return (
     <details className="how-to-scan" open={open}>
@@ -87,10 +94,7 @@ export default function ResultCard({ onsdMm, mode, groundTruthMm }) {
           </div>
           <div>
             <div className="label">Error</div>
-            <div>
-              {onsdMm - groundTruthMm >= 0 ? '+' : '−'}
-              {fmt(Math.abs(onsdMm - groundTruthMm), 2)} mm
-            </div>
+            <div>{formatSignedMm(onsdMm - groundTruthMm)}</div>
           </div>
         </div>
       )}
