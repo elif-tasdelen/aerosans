@@ -233,7 +233,8 @@ p { margin: 0.4rem 0; }
 @keyframes pop { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } }
 
-.thresholds { margin: 6px 0 12px; }
+.thresholds { margin: 6px 0 2px; }
+.thresholds-note { margin: 0 0 12px; font-style: italic; }
 
 .truth-box, .icp-box, .action-box {
   margin: 10px 0;

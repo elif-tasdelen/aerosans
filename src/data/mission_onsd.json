@@ -1,0 +1,13 @@
+{
+  "label": "Simulated data",
+  "crewMember": "Crew Member A",
+  "anchors": [
+    { "day": 1, "onsd": 4.10 },
+    { "day": 30, "onsd": 4.35 },
+    { "day": 60, "onsd": 4.70 },
+    { "day": 90, "onsd": 5.10 },
+    { "day": 120, "onsd": 5.35 },
+    { "day": 150, "onsd": 5.60 },
+    { "day": 180, "onsd": 5.85 }
+  ]
+}

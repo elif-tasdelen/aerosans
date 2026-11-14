@@ -42,6 +42,10 @@ npm run build    # production build in dist/
 
 _To be added after deployment._
 
+## Limitations
+
+A meta-analysis of 38 studies (Berhanu et al., 2023) shows that optimal ONSD cut-off values for detecting elevated ICP vary widely, from 4.1 mm to 7.2 mm. Because there is no single universal threshold, AeroSANS uses 5.0 mm and 5.7 mm as commonly used literature reference points, not as diagnostic triggers. The main value of AeroSANS is tracking the relative ONSD trend of each astronaut over a mission, not giving a single-point diagnosis. The ICP estimate (Wang et al., 2017) comes from Earth-based patients and has not been validated in microgravity.
+
 ## AI Usage Declaration
 
 Portions of the source code were generated with AI assistance (Claude Code, Anthropic) and reviewed by
@@ -58,6 +62,7 @@ by the team's biomedical engineering member. The phantom ultrasound images and t
   "Why the eye?" card: https://osdr.nasa.gov/bio/repo/data/studies/OSD-397
 - **NASA HRP — 5 Hazards of Human Spaceflight** and **Risks of Human Spaceflight** — public resources
   used for background and framing: https://www.nasa.gov/hrp/hazards/ · https://www.nasa.gov/hrp/risks/
+- Mission trend data is simulated (fictional Crew Member A) and labeled as such in the app.
 - All crew data shown in the app is **simulated** and labelled as such. Crew names are fictional.
 - No NASA logos, insignia or mission patches are used.
 
@@ -66,6 +71,16 @@ by the team's biomedical engineering member. The phantom ultrasound images and t
 - Wang L-J, et al. "Noninvasive and quantitative intracranial pressure estimation using
   ultrasonographic measurement of optic nerve sheath diameter." *Scientific Reports* 2017;7:42063.
   doi:10.1038/srep42063
+- Maissan IM, et al. Ultrasonographic measured optic nerve sheath diameter as an accurate and quick
+  monitor for changes in intracranial pressure. *J Neurosurg.* 2015;123(3):743-7.
+  doi:10.3171/2014.10.JNS141197 — https://pubmed.ncbi.nlm.nih.gov/25955869/
+- Maissan IM, et al. Response [to: Optic nerve sheath diameter as ICP marker]. *J Neurosurg.*
+  2016;124(3):891.
+- Soldatos T, et al. Optic nerve sonography in the diagnostic evaluation of adult brain injury.
+  *Crit Care.* 2008;12(3):R67. doi:10.1186/cc6897 — https://pubmed.ncbi.nlm.nih.gov/18477382/
+- Berhanu D, et al. The role of optic nerve sheath ultrasonography in increased intracranial
+  pressure: a systematic review and meta-analysis. *J Neurol Sci.* 2023;454:120853.
+  doi:10.1016/j.jns.2023.120853
 - NASA OSDR OSD-397 — RNA-seq and RRBS on spaceflight mouse retina (Rodent Research-1):
   https://osdr.nasa.gov/bio/repo/data/studies/OSD-397
 - NASA HRP — 5 Hazards of Human Spaceflight: https://www.nasa.gov/hrp/hazards/

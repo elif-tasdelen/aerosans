@@ -73,6 +73,7 @@ export default function ResultCard({ onsdMm, mode, groundTruthMm }) {
         Thresholds: normal &lt; {ONSD_BORDERLINE_MM.toFixed(1)} mm · borderline{' '}
         {ONSD_BORDERLINE_MM.toFixed(1)}–{ONSD_HIGH_MM.toFixed(1)} mm · high ≥ {ONSD_HIGH_MM.toFixed(1)} mm
       </div>
+      <p className="thresholds-note small muted">{SCIENCE_NOTES.thresholds}</p>
 
       {hasTruth && (
         <div className="truth-box">
