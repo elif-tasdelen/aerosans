@@ -1,6 +1,3 @@
-// AeroSANS — NASA Space Apps Challenge 2026
-// Portions of this file were generated with AI assistance (Claude Code, Anthropic) and reviewed by the team.
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { generatePhantom } from '../lib/phantom.js';
 import { computeMmPerPx, measureOnsd, measurementLineY } from '../lib/measure.js';

@@ -1,6 +1,3 @@
-// AeroSANS — NASA Space Apps Challenge 2026
-// Portions of this file were generated with AI assistance (Claude Code, Anthropic) and reviewed by the team.
-
 // NASA OSDR OSD-397 — Rodent Research-1, spaceflight vs ground control mouse retina (RNA-seq).
 // Comparison: (Space Flight)v(Ground Control); significance: adjusted p-value < 0.05.
 export const OSD397 = {

@@ -1,6 +1,3 @@
-// AeroSANS — NASA Space Apps Challenge 2026
-// Portions of this file were generated with AI assistance (Claude Code, Anthropic) and reviewed by the team.
-
 // Central place for every threshold, constant and science text used by the app.
 // Scientific values and texts are provided and reviewed by the biomedical team member.
 

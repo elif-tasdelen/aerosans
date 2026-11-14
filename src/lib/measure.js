@@ -1,6 +1,3 @@
-// AeroSANS — NASA Space Apps Challenge 2026
-// Portions of this file were generated with AI assistance (Claude Code, Anthropic) and reviewed by the team.
-
 // ONSD measurement pipeline. Pure logic: no React / DOM imports, so it can be
 // unit-tested with Vitest. Images are { pixels, width, height } where `pixels`
 // is a greyscale array (one value 0–255 per pixel, row-major).

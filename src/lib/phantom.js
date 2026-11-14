@@ -1,6 +1,3 @@
-// AeroSANS — NASA Space Apps Challenge 2026
-// Portions of this file were generated with AI assistance (Claude Code, Anthropic) and reviewed by the team.
-
 // Synthetic ocular B-scan phantom generator. Pure logic: no React / DOM imports.
 //
 // Geometry (image coordinates, y grows downward):

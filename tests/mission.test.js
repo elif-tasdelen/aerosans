@@ -1,6 +1,3 @@
-// AeroSANS — NASA Space Apps Challenge 2026
-// Portions of this file were generated with AI assistance (Claude Code, Anthropic) and reviewed by the team.
-
 import { describe, expect, it } from 'vitest';
 import { buildWeeklySeries, interpolateOnsd, SERIES_NOISE_MM } from '../src/lib/mission.js';
 import mission from '../src/data/mission_onsd.json';

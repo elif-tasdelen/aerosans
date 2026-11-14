@@ -2,7 +2,11 @@
   "name": "aerosans",
   "private": true,
   "version": "0.1.0",
-  "description": "AeroSANS — ONSD-based SANS risk signal for astronauts. NASA Space Apps Challenge 2026 research prototype.",
+  "description": "AeroSANS — ONSD-based SANS risk signal for astronauts. NASA Space Apps Challenge 2026 research prototype. Portions of the code were generated with AI assistance (Claude Code, Anthropic).",
+  "keywords": [
+    "nasa-space-apps-2026",
+    "ai-assisted"
+  ],
   "license": "MIT",
   "type": "module",
   "scripts": {
