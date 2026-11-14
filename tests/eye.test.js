@@ -36,6 +36,19 @@ describe('3D eye model orientation and framing', () => {
   eye.group.updateMatrixWorld(true);
   const worldPos = (obj) => obj.getWorldPosition(new THREE.Vector3());
 
+  it('the measurement ring is gold (#FFD700) with a dark outline on both sides along the nerve', () => {
+    expect(eye.ring.material.color.getHexString()).toBe('ffd700');
+    expect(eye.ringOutline).toHaveLength(2);
+    const xs = eye.ringOutline.map((o) => worldPos(o).x - worldPos(eye.ring).x).sort((a, b) => a - b);
+    expect(xs[0]).toBeLessThan(0);
+    expect(xs[1]).toBeGreaterThan(0);
+    for (const edge of eye.ringOutline) {
+      const hsl = edge.material.color.getHSL({});
+      expect(hsl.l).toBeLessThan(0.15);
+      expect(Math.abs(worldPos(edge).y)).toBeLessThan(1e-9);
+    }
+  });
+
   it('the optic nerve runs along +X (within 1°), straight from the posterior pole', () => {
     const axis = worldPos(eye.nerve).sub(worldPos(eye.globe)).normalize();
     const angle = THREE.MathUtils.radToDeg(axis.angleTo(new THREE.Vector3(1, 0, 0)));

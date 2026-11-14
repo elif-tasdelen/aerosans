@@ -426,7 +426,7 @@ export default function Eye3D({ latest }) {
             ))}
           </div>
           <p className="small muted">
-            The yellow ring marks where ONSD is measured ({MEASURE_DEPTH_MM} mm behind the globe). Drag to
+            The gold ring marks where ONSD is measured ({MEASURE_DEPTH_MM} mm behind the globe). Drag to
             rotate, scroll to zoom.
           </p>
           <p className="small muted">{EYE_VIEW_NOTE}</p>

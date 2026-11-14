@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { buildCrewMission, CREW, DEFAULT_CREW_ID } from './lib/crew.js';
 import Disclaimer from './components/Disclaimer.jsx';
 import MeasureScreen from './components/MeasureScreen.jsx';
 import Eye3D from './components/Eye3D.jsx';
@@ -9,6 +10,9 @@ import { REFERENCES, SCIENCE_NOTES } from './config.js';
 export default function App() {
   // Latest measurement, shared with the 3D eye.
   const [result, setResult] = useState(null);
+  // Selected (fictional) crew member; all mission data is simulated.
+  const [crewId, setCrewId] = useState(DEFAULT_CREW_ID);
+  const { crew, series, co2 } = useMemo(() => buildCrewMission(crewId), [crewId]);
 
   return (
     <div className="app">
@@ -18,7 +22,18 @@ export default function App() {
           <h1>AeroSANS</h1>
           <p className="tagline">Eye-based early warning for spaceflight neuro-ocular risk.</p>
         </div>
-        <div className="crew-chip">Crew Member A · Simulated mission</div>
+        <div className="crew-select">
+          <label htmlFor="crew-select" className="label">
+            Crew roster · Simulated mission
+          </label>
+          <select id="crew-select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+            {CREW.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </header>
 
       <section className="intro card">
@@ -27,10 +42,10 @@ export default function App() {
       </section>
 
       <main>
-        <MeasureScreen onResult={setResult} />
+        <MeasureScreen onResult={setResult} crew={crew} series={series} co2={co2} />
         {/* The eye is linked to a measurement only when it has a real scale (see eyeViewState). */}
         <Eye3D latest={result} />
-        <TrendChart />
+        <TrendChart crew={crew} series={series} co2={co2} />
         <WhyEyeCard />
       </main>
 

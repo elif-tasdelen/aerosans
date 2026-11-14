@@ -22,6 +22,15 @@ export function interpolateOnsd(anchors, day) {
   return last.onsd;
 }
 
+/** Number of mission weeks in each risk level (the last scan of a week decides its level). */
+export function weeklyRiskCounts(series) {
+  const byWeek = new Map();
+  for (const p of series) byWeek.set(Math.floor((p.day - 1) / 7), p.risk);
+  const counts = { normal: 0, borderline: 0, high: 0 };
+  for (const risk of byWeek.values()) counts[risk]++;
+  return counts;
+}
+
 /**
  * Weekly series from the first to the last anchor day (days 1, 8, 15, … plus the last day).
  * Anchor days are also included and keep their exact values; every other point gets

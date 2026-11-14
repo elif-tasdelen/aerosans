@@ -72,10 +72,17 @@ export const MESSAGES = {
   axisTooShort: 'That point is too close to the globe — click further down the nerve (at least 4 mm away).',
   clickDepth: 'Click the point 3 mm behind the globe on the nerve (no scale, so the app cannot place it).',
   edgesUnclear: 'Edges are unclear on this image — click the left and right inner edges of the bright sheath.',
-  edgesAuto: 'Edges detected automatically. Drag the edge markers along the yellow line to fine-tune.',
+  edgesAuto: 'Edges detected automatically. Drag the edge markers along the measurement line to fine-tune.',
   autoDetected: 'Auto-detected globe point and nerve axis. Check the overlay, then Accept or re-pick manually.',
   autoUnreliable: 'Auto-detection is unreliable on this image — please pick the points manually.',
+  autoMeasureDone: 'Auto-Measure complete. Check the overlay; drag the edge markers along the measurement line to fine-tune.',
+  autoMeasureFailed: 'Auto-Measure could not measure this image reliably — please pick the points manually.',
 };
+
+/** Color of the 3 mm measurement marker (2D measurement line and the ring in the 3D eye). */
+export const MEASURE_MARKER_COLOR = '#FFD700';
+/** Auto-Measure scan animation length (ms). Skipped with prefers-reduced-motion. */
+export const AUTO_MEASURE_SCAN_MS = 1200;
 
 // --- Risk thresholds --------------------------------------------------------
 // Source: Maissan IM et al. J Neurosurg 2015;123(3):743-7. doi:10.3171/2014.10.JNS141197
@@ -201,6 +208,49 @@ export const EYE_VIEW_NOTE =
 export const OSD397_VOLCANO_CAPTION =
   'NASA OSDR OSD-397 volcano plot (Visualization Portal). x-axis: log2 fold change, Ground Control vs Space Flight (positive = lower in spaceflight). Mouse retina, 37-day mission; changes are modest and not directly transferable to humans.';
 
+// --- Cabin CO2 context (simulated values, real sources) --------------------------------
+// Crew symptoms have been noted from about 2.3 mmHg (NASA NTRS 20150019624).
+export const CO2_SYMPTOM_MMHG = 2.3;
+// ISS operational limit for the 24-hour average since 2010 (NASA NTRS 20150019624).
+export const CO2_OPS_LIMIT_MMHG = 4.0;
+
+export const CO2 = {
+  legend: 'Cabin CO₂ (simulated)',
+  symptomLabel: 'Crew symptoms reported from ~2.3 mmHg',
+  opsLimitLabel: 'ISS operational 24-h limit (since 2010)',
+  status: {
+    nominal: 'Nominal',
+    elevated: 'Elevated — symptoms possible',
+    aboveLimit: 'Above ISS operational limit',
+  },
+  context:
+    'In microgravity there is little natural convection, so exhaled CO₂ can accumulate around the crew member if ventilation is poor. Elevated CO₂ widens brain blood vessels, and together with the headward fluid shift this may contribute to higher intracranial pressure (Evans, 2025). AeroSANS shows CO₂ as context next to the ONSD trend; no causal link is modeled.',
+  notes: [
+    'NASA OCHMO-TB-004: the most common spaceflight symptoms are headaches and vision changes (SANS), commonly linked to fluid shifts and a potential ICP increase; an association between reported headaches and CO₂ levels has been observed.',
+    'ISS operational limit: 24-hour average CO₂ ≤ 4.0 mmHg since 2010; crew symptoms have been noted starting at about 2.3 mmHg (NASA NTRS 20150019624).',
+    'Evans, 2025 (commentary): microgravity fluid shifts may amplify CO₂-mediated cerebral vasodilation, contributing to elevated ICP and potentially exacerbating SANS.',
+    'Law et al., 2014: the odds of a reported headache roughly doubled per 1 mmHg increase in CO₂.',
+  ],
+  sources: [
+    {
+      text: 'NASA OCHMO-TB-004 — NASA-STD-3001 Technical Brief: Carbon Dioxide (CO₂).',
+      url: 'https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-004-carbon-dioxide.pdf',
+    },
+    {
+      text: 'NASA NTRS 20150019624 — ISS carbon dioxide operational limit and crew symptoms.',
+      url: 'https://ntrs.nasa.gov/citations/20150019624',
+    },
+    {
+      text: 'Evans LA. Carbon dioxide as a multisystem threat in long duration spaceflight. Aerosp Med Hum Perform. 2025;96(11):1024–1026.',
+      url: 'https://doi.org/10.3357/AMHP.6716.2025',
+    },
+    {
+      text: 'Law J, et al. Relationship between carbon dioxide levels and reported headaches on the ISS. J Occup Environ Med. 2014.',
+      url: null,
+    },
+  ],
+};
+
 /** Short reference list shown in the footer (same sources as README → References). */
 export const REFERENCES = [
   {
@@ -226,6 +276,18 @@ export const REFERENCES = [
   },
   { text: 'NASA HRP — 5 Hazards of Human Spaceflight.', url: 'https://www.nasa.gov/hrp/hazards/' },
   { text: 'NASA HRP — Risks of Human Spaceflight.', url: 'https://www.nasa.gov/hrp/risks/' },
+  ...CO2.sources,
 ];
+
+// --- PDF report --------------------------------------------------------------------
+export const REPORT = {
+  title: 'AeroSANS — ONSD Risk Report',
+  footer: 'Simulated data where labeled. Not for clinical use.',
+  noScale: 'No scale — ONSD in pixels only; risk and ICP not computed',
+  generating: 'Generating report…',
+  ready: 'Report ready',
+  generatingMs: 1500,
+  readyMs: 500,
+};
 
 export const DISCLAIMER_TEXT = 'Research prototype — not a medical device. Not for diagnosis.';

@@ -16,21 +16,45 @@ import {
   withEdgeOffsets,
 } from '../lib/measure.js';
 import { buildResultState } from '../lib/result.js';
+import { autoMeasure } from '../lib/autoMeasure.js';
+import { co2Status, latestCo2 } from '../lib/cabinCo2.js';
+import { buildReportModel } from '../lib/report.js';
 import {
+  AUTO_MEASURE_SCAN_MS,
   AXIS_MIN_DISTANCE_MM,
   AXIS_MIN_DISTANCE_PX,
   CALIBRATION_LABELS,
   HOW_TO_SCAN,
   MEASURE_DEPTH_MM,
+  MEASURE_MARKER_COLOR,
   MESSAGES,
   PHANTOM_ONSD_DEFAULT_MM,
   PHANTOM_ONSD_MAX_MM,
   PHANTOM_ONSD_MIN_MM,
+  REPORT,
 } from '../config.js';
+import pkg from '../../package.json';
 import ResultCard from './ResultCard.jsx';
+import { renderReportPdf } from './reportPdf.js';
 
 const MAX_UPLOAD_WIDTH = 900;
 const HANDLE_RADIUS_DISPLAY_PX = 12;
+const REPORT_IMAGE_BG = '#0f1a2e';
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Copy a canvas onto an opaque background and return it as an image for the PDF report. */
+function snapshotCanvas(canvas, type = 'image/png') {
+  if (!canvas || !canvas.width || !canvas.height) return null;
+  const copy = document.createElement('canvas');
+  copy.width = canvas.width;
+  copy.height = canvas.height;
+  const ctx = copy.getContext('2d');
+  ctx.fillStyle = REPORT_IMAGE_BG;
+  ctx.fillRect(0, 0, copy.width, copy.height);
+  ctx.drawImage(canvas, 0, 0);
+  return { dataUrl: copy.toDataURL(type, 0.9), width: copy.width, height: copy.height };
+}
 
 const CAL_MODES = [
   { id: 'scaleBar', label: 'Scale bar', hint: 'Click both ends of a ruler or scale bar, then enter its length in mm.' },
@@ -142,11 +166,16 @@ function drawEdgeMarker(ctx, p, u, color) {
   ctx.fill();
 }
 
-export default function MeasureScreen({ onResult }) {
+export default function MeasureScreen({ onResult, crew, series = [], co2 = [] }) {
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
   const dragRef = useRef(null); // 'left' | 'right' | null
   const suppressClickRef = useRef(false);
+  const scanTimerRef = useRef(null);
+
+  const [scanning, setScanning] = useState(false); // Auto-Measure scan animation running
+  const [autoCircle, setAutoCircle] = useState(null); // globe circle found by Auto-Measure
+  const [reportState, setReportState] = useState('idle'); // 'idle' | 'generating' | 'ready'
 
   const [source, setSource] = useState(null);
   const [phantomOnsd, setPhantomOnsd] = useState(PHANTOM_ONSD_DEFAULT_MM);
@@ -211,7 +240,12 @@ export default function MeasureScreen({ onResult }) {
 
   // --- State transitions -------------------------------------------------------------
 
+  useEffect(() => () => clearTimeout(scanTimerRef.current), []);
+
   const clearMeasurement = () => {
+    clearTimeout(scanTimerRef.current);
+    setScanning(false);
+    setAutoCircle(null);
     setClicks([]);
     setGlobePt(null);
     setMeasurement(null);
@@ -388,6 +422,65 @@ export default function MeasureScreen({ onResult }) {
     setNotice(MESSAGES.clickGlobe);
   };
 
+  // --- Auto-Measure: one click from a calibrated image to a result ------------------------
+
+  const finishAutoMeasure = () => {
+    const res = autoMeasure(source, { mmPerPx });
+    setScanning(false);
+    if (!res.ok) {
+      setNotice(MESSAGES.autoMeasureFailed);
+      return;
+    }
+    setAutoCircle(res.circle);
+    setClicks([res.points.globePoint, res.points.axisPoint]);
+    setGlobePt(res.points.globePoint);
+    setMeasurement(res.measurement);
+    setNotice(MESSAGES.autoMeasureDone);
+  };
+
+  const runAutoMeasure = () => {
+    if (!source || !scaled || scanning) return;
+    clearMeasurement();
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      finishAutoMeasure();
+      return;
+    }
+    setScanning(true);
+    setNotice('Auto-Measure: locating the globe, the nerve axis and the sheath edges…');
+    scanTimerRef.current = setTimeout(finishAutoMeasure, AUTO_MEASURE_SCAN_MS);
+  };
+
+  // --- PDF report (downloaded locally; nothing is sent anywhere) ---------------------------
+
+  const generateReport = async () => {
+    if (!result || reportState !== 'idle') return;
+    setReportState('generating');
+    const started = performance.now();
+    try {
+      const model = buildReportModel({
+        result,
+        source,
+        crewName: crew?.name ?? 'Crew Member A',
+        series,
+        co2,
+        version: pkg.version,
+        now: new Date(),
+      });
+      const doc = await renderReportPdf(model, {
+        trend: snapshotCanvas(document.querySelector('.trend-chart canvas')),
+        measurement: snapshotCanvas(canvasRef.current, 'image/jpeg'),
+      });
+      await wait(Math.max(0, REPORT.generatingMs - (performance.now() - started)));
+      setReportState('ready');
+      doc.save(model.filename);
+      await wait(REPORT.readyMs);
+    } catch (err) {
+      setNotice(`The report could not be generated: ${err.message}`);
+    } finally {
+      setReportState('idle');
+    }
+  };
+
   const switchToManual = () => {
     setManualPts([]);
     setMeasurement((m) => ({ ...m, leftOffset: null, rightOffset: null, widthPx: null, onsdMm: null, method: 'manual' }));
@@ -435,7 +528,8 @@ export default function MeasureScreen({ onResult }) {
         // Keep the dragged handle identity if it crossed the other edge.
         const draggedOffset = projectOnto(p, m.center, m.n);
         dragRef.current = draggedOffset === next.leftOffset ? 'left' : 'right';
-        return { ...next, method: m.method === 'auto' ? 'auto (adjusted)' : m.method };
+        const adjustable = m.method === 'auto' || m.method === 'auto-measure';
+        return { ...next, method: adjustable ? `${m.method} (adjusted)` : m.method };
       });
       suppressClickRef.current = true;
       return;
@@ -455,7 +549,7 @@ export default function MeasureScreen({ onResult }) {
       suppressClickRef.current = false;
       return;
     }
-    if (!source) return;
+    if (!source || scanning) return;
     const { x, y } = toImage(e);
     const pt = { x, y };
     if (step === 2 && (calMode === 'scaleBar' || calMode === 'depth') && !calibration) {
@@ -540,7 +634,19 @@ export default function MeasureScreen({ onResult }) {
     if (clicks[0]) drawRing(ctx, clicks[0], '#f9a8d4', 5);
     if (globePt) drawCross(ctx, globePt, '#f472b6', 9);
     if (clicks[1]) drawCross(ctx, clicks[1], '#22d3ee', 7);
-    if (clicks[2]) drawRing(ctx, clicks[2], '#facc15', 5);
+    if (clicks[2]) drawRing(ctx, clicks[2], MEASURE_MARKER_COLOR, 5);
+
+    // Globe circle found by Auto-Measure.
+    if (autoCircle && measurement) {
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(autoCircle.x, autoCircle.y, autoCircle.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     if (measurement) {
       const { center, u, n, globePt: g, halfWidthPx } = measurement;
@@ -552,16 +658,16 @@ export default function MeasureScreen({ onResult }) {
           `${MEASURE_DEPTH_MM} mm`,
           (g.x + center.x) / 2 + 12 * n.x + 6,
           (g.y + center.y) / 2 + 12 * n.y + 4,
-          '#f9a8d4'
+          MEASURE_MARKER_COLOR
         );
       }
-      // Measurement line, perpendicular to the axis.
-      drawLine(ctx, pointAlongAxis(center, n, -halfWidthPx), pointAlongAxis(center, n, halfWidthPx), '#facc15', 1.5);
+      // Measurement line (the 3 mm marker), perpendicular to the axis.
+      drawLine(ctx, pointAlongAxis(center, n, -halfWidthPx), pointAlongAxis(center, n, halfWidthPx), MEASURE_MARKER_COLOR, 1.5);
 
       manualPts.forEach((p) => drawEdgeMarker(ctx, edgePoint(center, n, projectOnto(p, center, n)), u, '#fb923c'));
 
       if (hasEdges) {
-        const color = measurement.method === 'auto' ? '#22c55e' : '#fb923c';
+        const color = measurement.method === 'auto' || measurement.method === 'auto-measure' ? '#22c55e' : '#fb923c';
         const l = edgePoint(center, n, measurement.leftOffset);
         const r = edgePoint(center, n, measurement.rightOffset);
         drawEdgeMarker(ctx, l, u, color);
@@ -574,11 +680,12 @@ export default function MeasureScreen({ onResult }) {
         drawLabel(ctx, text, labelAt.x, labelAt.y + 28, color);
       }
     }
-  }, [source, calibration, calMode, calibPts, depthCm, clicks, globePt, measurement, manualPts, scaled, proposal]);
+  }, [source, calibration, calMode, calibPts, depthCm, clicks, globePt, measurement, manualPts, scaled, proposal, autoCircle]);
 
   // --- Render ----------------------------------------------------------------------------
 
   const clickHint = (() => {
+    if (scanning) return 'Scanning…';
     if (step === 2 && calMode === 'scaleBar' && !calibration) return `Scale bar: click point ${Math.min(calibPts.length + 1, 2)} of 2`;
     if (step === 2 && calMode === 'depth' && !calibration) return calibPts.length === 0 ? 'Click the top of the image field' : 'Click the depth marker (bottom)';
     if (step === 3 && proposal) return 'Accept the proposal, or click to pick manually';
@@ -588,6 +695,7 @@ export default function MeasureScreen({ onResult }) {
     return '';
   })();
 
+  const co2Latest = latestCo2(co2);
   const showCalibChoice = source?.kind === 'upload' && step === 2;
   const calibReady = calibPts.length === 2;
 
@@ -766,6 +874,11 @@ export default function MeasureScreen({ onResult }) {
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
               />
+              {scanning && (
+                <div className="scan-overlay" aria-hidden="true" style={{ '--scan-ms': `${AUTO_MEASURE_SCAN_MS}ms` }}>
+                  <div className="scan-line" />
+                </div>
+              )}
               {clickHint && <div className="canvas-hint">{clickHint}</div>}
             </>
           ) : (
@@ -796,6 +909,20 @@ export default function MeasureScreen({ onResult }) {
         )}
 
         <div className="row">
+          {source && (
+            <button
+              className="btn btn-primary"
+              onClick={runAutoMeasure}
+              disabled={!scaled || scanning}
+              title={
+                scaled
+                  ? 'Finds the globe, the nerve axis and the sheath edges in one step (classical image processing)'
+                  : 'Calibrate the image with a scale bar or the image depth first'
+              }
+            >
+              {scanning ? 'Measuring…' : 'Auto-Measure'}
+            </button>
+          )}
           {step === 3 && !proposal && (
             <button className="btn btn-ghost" onClick={runAutodetect} title="Proposes the globe point and nerve axis">
               Auto-detect globe &amp; nerve <span className="beta-tag">beta</span>
@@ -843,7 +970,20 @@ export default function MeasureScreen({ onResult }) {
           setNotice('Choose a calibration mode and use a known scale (ruler, scale bar or image depth).');
         }}
         onConfirmScale={() => setCalibration((c) => ({ ...c, confirmedIndependent: true }))}
+        co2={co2Latest ? { value: co2Latest.co2, status: co2Status(co2Latest.co2) } : null}
+        onGenerateReport={generateReport}
+        reportBusy={reportState !== 'idle'}
       />
+
+      {reportState !== 'idle' && (
+        <div className="report-overlay" role="status" aria-live="polite">
+          <div className="report-overlay-box">
+            {reportState === 'generating' && <div className="spinner" aria-hidden="true" />}
+            <strong>{reportState === 'generating' ? REPORT.generating : REPORT.ready}</strong>
+            <span className="small muted">The PDF is saved to this device. Nothing is sent anywhere.</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

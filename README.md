@@ -44,6 +44,10 @@ Astronauts on Space Missions"*
 - **Auto-detect globe & nerve (beta)** for uploaded images, with confidence and manual override: it
   proposes the posterior globe point and the nerve axis (globe circle fit + nerve-band line fit), and
   the user accepts or re-picks them.
+- **Auto-Measure (one click):** on a calibrated image, a short scan animation runs and the app finds
+  the globe, the nerve axis and the sheath edges in one step (classical image processing: circle fit,
+  line fit and an edge profile). The result is labelled "auto-measure". If any step has low confidence
+  it stops and falls back to the manual flow. The animation is skipped with `prefers-reduced-motion`.
 - **Local validation harness** (`npm run validate`, see `validation/README.md`) to compare automatic
   measurements with expert measurements on openly licensed images that are kept out of the repository.
 - Result card: ONSD, method, confidence, calibration mode, colour-coded risk badge, ICP range (mmH₂O and
@@ -51,11 +55,21 @@ Astronauts on Space Missions"*
   and actions appear only with a real scale. Phantoms show ground truth vs measured error.
 - 3D eye (Three.js, procedural geometry, no external models): side view with the optic nerve running
   horizontally; the sheath widens with ONSD and uses the risk colors (green / amber / red, grey without
-  a scale). The globe uses an eye texture (AI-generated, edited; labeled in the view) with the iris on
+  a scale). A gold ring with a dark outline marks the measurement position 3 mm behind the globe. The globe uses an eye texture (AI-generated, edited; labeled in the view) with the iris on
   the optic axis opposite the nerve, a transparent cornea and a soft rim light. Parts are clickable
   and explain their function and status.
-- **Mission trend chart** (Chart.js): 180 days of simulated ONSD for Crew Member A, points and segments
-  colored by risk, dashed threshold lines at 5.0 and 5.7 mm.
+- **Crew roster (simulated mission):** a dropdown in the header switches between the fictional
+  Crew Member A, B and C. Each has its own deterministic simulated ONSD and cabin CO₂ series; the trend
+  chart, the cabin environment box and the report follow the selection.
+- **Mission trend chart** (Chart.js): 180 days of simulated ONSD for the selected crew member, points
+  and segments colored by risk, dashed threshold lines at 5.0 and 5.7 mm.
+- **Cabin CO₂ context (simulated, with NASA sources):** simulated cabin CO₂ on a second axis of the trend
+  chart with reference lines at 2.3 mmHg (crew symptoms reported) and 4.0 mmHg (ISS operational 24-h
+  limit), a "Cabin environment" box (latest value, status, weeks above 4.0 mmHg) and a context line in
+  the result card. CO₂ is shown as context only; no causal link is modeled.
+- **PDF report:** "Generate report (PDF)" in the result card downloads a 1–2 page A4 report (measurement,
+  risk signal, ICP range, action, mission trend, cabin environment, annotated image, limitations and
+  references). The file is created in the browser; nothing is sent anywhere.
 - **"How to scan" help:** a "?" button next to the measurement title opens the scanning steps.
 - **"Why the eye?" card:** SANS background, NASA OSDR OSD-397 mouse-retina genes and the volcano plot.
 - Footer with the limitations and a short reference list.
@@ -84,6 +98,8 @@ Auto-detection was tuned on synthetic phantoms. Real-image performance is evalua
 
 On real ultrasound images, automatic edges may sit inside expert caliper positions on blurred sheath borders, and auto-detection (beta) may fail; draggable edges and manual picking are provided.
 
+Cabin CO₂ values are simulated and shown as context only; no causal relationship with ONSD is modeled in code.
+
 ## AI Usage Declaration
 
 Portions of the source code were generated with AI assistance (Claude Code, Anthropic) and reviewed by
@@ -107,7 +123,8 @@ AI-assisted files: all files in src/ and tests/, index.html, vite.config.js, pub
   "Why the eye?" card: https://osdr.nasa.gov/bio/repo/data/studies/OSD-397
 - **NASA HRP — 5 Hazards of Human Spaceflight** and **Risks of Human Spaceflight** — public resources
   used for background and framing: https://www.nasa.gov/hrp/hazards/ · https://www.nasa.gov/hrp/risks/
-- Mission trend data is simulated (fictional Crew Member A) and labeled as such in the app.
+- Mission trend data and cabin CO₂ values are simulated (fictional Crew Members A, B and C) and labeled
+  as such in the app.
 - **OSD-397 volcano plot** (`public/osd397_volcano.png`, added by the biomedical team member): exported
   from the NASA OSDR Visualization Portal for study OSD-397 and shown in the "Why the eye?" card.
 - All crew data shown in the app is **simulated** and labelled as such. Crew names are fictional.
@@ -132,6 +149,14 @@ AI-assisted files: all files in src/ and tests/, index.html, vite.config.js, pub
   https://osdr.nasa.gov/bio/repo/data/studies/OSD-397
 - NASA HRP — 5 Hazards of Human Spaceflight: https://www.nasa.gov/hrp/hazards/
 - NASA HRP — Risks of Human Spaceflight: https://www.nasa.gov/hrp/risks/
+- NASA OCHMO-TB-004 — NASA-STD-3001 Technical Brief: Carbon Dioxide (CO₂):
+  https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-004-carbon-dioxide.pdf
+- NASA NTRS 20150019624 — ISS carbon dioxide operational limit and crew symptoms:
+  https://ntrs.nasa.gov/citations/20150019624
+- Evans LA. Carbon dioxide as a multisystem threat in long duration spaceflight. *Aerosp Med Hum
+  Perform.* 2025;96(11):1024–1026. doi:10.3357/AMHP.6716.2025
+- Law J, et al. Relationship between carbon dioxide levels and reported headaches on the ISS.
+  *J Occup Environ Med.* 2014.
 
 ### Libraries
 
@@ -141,6 +166,7 @@ AI-assisted files: all files in src/ and tests/, index.html, vite.config.js, pub
 | three (Three.js) | 0.170.0 | MIT |
 | Chart.js | 4.4.6 | MIT |
 | react-chartjs-2 | 5.2.0 | MIT |
+| jsPDF | 4.2.1 | MIT |
 | Vite | 5.4.11 | MIT |
 | @vitejs/plugin-react | 4.3.4 | MIT |
 | Vitest | 2.1.8 | MIT |

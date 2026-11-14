@@ -5,7 +5,7 @@
 // globe's posterior pole: no tilt, no offset.
 
 import * as THREE from 'three';
-import { EYE_MM_PER_UNIT, MEASURE_DEPTH_MM } from '../config.js';
+import { EYE_MM_PER_UNIT, MEASURE_DEPTH_MM, MEASURE_MARKER_COLOR } from '../config.js';
 import { nerveRadius } from './eye.js';
 
 export const NERVE_LENGTH = 2.2;
@@ -13,6 +13,7 @@ export const NERVE_START_X = 0.95; // just inside the posterior globe wall
 export const SHEATH_LENGTH = NERVE_LENGTH - 0.45; // the far end of the nerve stays bare (easy to click)
 export const NERVE_AXIS = new THREE.Vector3(1, 0, 0);
 export const GLOBE_OPACITY = 0.82;
+export const RING_OUTLINE_COLOR = 0x1c1917;
 export const EYE_TEXTURE_PATH = 'textures/eye.png';
 export const EYE_TEXTURE_LABEL = 'Eye texture: AI-generated (Gemini), edited';
 
@@ -124,12 +125,26 @@ export function buildEye() {
   anchors.sheath = new THREE.Vector3(1.6, 0.3, 0);
 
   // Ring marking where ONSD is measured (3 mm behind the globe), perpendicular to the nerve.
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 8, 64), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1, 0.06, 8, 64),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(MEASURE_MARKER_COLOR) })
+  );
   ring.rotation.y = Math.PI / 2; // ring plane ⟂ X
   ring.position.set(1 + MEASURE_DEPTH_MM / EYE_MM_PER_UNIT, 0, 0);
   group.add(ring);
+  // Thin dark outline on both sides of the ring (along the nerve), so the gold marker stays
+  // visible on the amber borderline sheath. Children of the ring, so they follow its scale.
+  const ringOutline = [-1, 1].map((side) => {
+    const edge = new THREE.Mesh(
+      new THREE.TorusGeometry(1, 0.03, 8, 64),
+      new THREE.MeshBasicMaterial({ color: RING_OUTLINE_COLOR })
+    );
+    edge.position.z = side * 0.075; // ring-local Z is the nerve direction
+    ring.add(edge);
+    return edge;
+  });
 
-  return { group, pickables, anchors, globe, nerve, sheath, ring };
+  return { group, pickables, anchors, globe, nerve, sheath, ring, ringOutline };
 }
 
 /**

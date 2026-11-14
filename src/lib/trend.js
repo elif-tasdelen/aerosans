@@ -2,6 +2,7 @@
 // Colors come from RISK_COLORS (the same source as the risk badge and the 3D sheath).
 
 import { ONSD_BORDERLINE_MM, ONSD_HIGH_MM, RISK_COLORS, RISK_LABELS } from '../config.js';
+import { co2Datasets } from './cabinCo2.js';
 
 /** Risk color of each point in a series from buildWeeklySeries. */
 export function pointColors(series) {
@@ -17,7 +18,7 @@ export function segmentColors(series) {
  * Chart.js data for the mission trend: the ONSD series (points and segments colored by risk)
  * plus two dashed threshold lines at the borderline and high thresholds.
  */
-export function trendChartData(series) {
+export function trendChartData(series, co2Series = null) {
   const days = series.map((p) => p.day);
   const x0 = Math.min(...days);
   const x1 = Math.max(...days);
@@ -58,6 +59,8 @@ export function trendChartData(series) {
         borderWidth: 1.5,
         pointRadius: 0,
       },
+      // Optional cabin CO2 context on the right axis (simulated; no causal link is modeled).
+      ...(co2Series ? co2Datasets(co2Series) : []),
     ],
   };
 }

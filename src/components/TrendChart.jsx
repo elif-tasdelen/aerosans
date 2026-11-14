@@ -1,21 +1,26 @@
 import { useMemo } from 'react';
 import { Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import mission from '../data/mission_onsd.json';
-import { buildWeeklySeries } from '../lib/mission.js';
+import { co2Status, latestCo2, weeksAboveLimit } from '../lib/cabinCo2.js';
 import { latestPoint, trendChartData } from '../lib/trend.js';
-import { RISK_LABELS } from '../config.js';
+import { CO2, CO2_OPS_LIMIT_MMHG, RISK_LABELS } from '../config.js';
 
 ChartJS.register(LinearScale, PointElement, LineElement, Tooltip, Legend);
 
 const TEXT = '#93a4c3';
 const GRID = 'rgba(147, 164, 195, 0.15)';
+const CO2_DATASET_INDEX = 3;
 
-/** 180-day simulated ONSD trend for Crew Member A, colored by risk, with threshold lines. */
-export default function TrendChart() {
-  const series = useMemo(() => buildWeeklySeries(mission.anchors, 1), []);
-  const data = useMemo(() => trendChartData(series), [series]);
+/**
+ * Simulated mission trend of the selected crew member: ONSD colored by risk with threshold
+ * lines, plus cabin CO2 on a second axis as context (no causal link is modeled).
+ */
+export default function TrendChart({ crew, series, co2 }) {
+  const data = useMemo(() => trendChartData(series, co2), [series, co2]);
   const latest = latestPoint(series);
+  const co2Latest = latestCo2(co2);
+  const status = co2Latest ? co2Status(co2Latest.co2) : null;
+  const weeksAbove = weeksAboveLimit(co2);
 
   const options = useMemo(
     () => ({
@@ -23,7 +28,7 @@ export default function TrendChart() {
       maintainAspectRatio: false,
       locale: 'en-US', // English number format regardless of the browser language
 
-      animation: { duration: 600 },
+      animation: { duration: 400 },
       interaction: { mode: 'nearest', intersect: false },
       scales: {
         x: {
@@ -41,14 +46,26 @@ export default function TrendChart() {
           ticks: { color: TEXT },
           grid: { color: GRID },
         },
+        co2: {
+          position: 'right',
+          min: 1,
+          max: 6,
+          title: { display: true, text: 'Cabin CO₂ (mmHg, simulated)', color: TEXT },
+          ticks: { color: TEXT },
+          grid: { drawOnChartArea: false },
+        },
       },
       plugins: {
-        legend: { labels: { color: TEXT, usePointStyle: true, boxHeight: 6 } },
+        legend: { labels: { color: TEXT, usePointStyle: true, boxHeight: 6, font: { size: 11 } } },
         tooltip: {
-          filter: (item) => item.datasetIndex === 0,
+          filter: (item) => item.datasetIndex === 0 || item.datasetIndex === CO2_DATASET_INDEX,
           callbacks: {
             title: (items) => `Day ${items[0].parsed.x}`,
             label: (item) => {
+              if (item.datasetIndex === CO2_DATASET_INDEX) {
+                const c = co2[item.dataIndex];
+                return `Cabin CO₂ (simulated) ${c.co2.toFixed(1)} mmHg — ${co2Status(c.co2).label}`;
+              }
               const p = series[item.dataIndex];
               return [
                 `ONSD ${p.onsd.toFixed(2)} mm — ${RISK_LABELS[p.risk]}`,
@@ -59,7 +76,7 @@ export default function TrendChart() {
         },
       },
     }),
-    [series]
+    [series, co2]
   );
 
   return (
@@ -67,7 +84,7 @@ export default function TrendChart() {
       <div className="trend-header">
         <div>
           <h2>Mission trend</h2>
-          <p className="simulated-label">Simulated data — {mission.crewMember}</p>
+          <p className="simulated-label">Simulated data — {crew.name}</p>
         </div>
         {latest && (
           <div className="trend-latest">
@@ -78,12 +95,39 @@ export default function TrendChart() {
           </div>
         )}
       </div>
-      <div className="trend-chart" role="img" aria-label="Line chart of simulated ONSD over 180 mission days with threshold lines at 5.0 and 5.7 mm">
+      <div
+        className="trend-chart"
+        role="img"
+        aria-label="Line chart of simulated ONSD over 180 mission days with threshold lines at 5.0 and 5.7 mm, and simulated cabin CO2 on a second axis with reference lines at 2.3 and 4.0 mmHg"
+      >
         <Line data={data} options={options} />
       </div>
       <p className="small muted">
         Each point is a weekly scan; colors follow the risk signal. The trend over the mission matters more than any single value.
       </p>
+
+      {co2Latest && (
+        <div className="cabin-box">
+          <div className="cabin-head">
+            <h3>Cabin environment</h3>
+            <span className="simulated-label">Simulated data</span>
+          </div>
+          <div className="cabin-stats">
+            <div>
+              <div className="label">Latest CO₂ (day {co2Latest.day})</div>
+              <div className="cabin-value">
+                {co2Latest.co2.toFixed(1)} <span className="unit">mmHg</span>
+                <span className={`co2-chip co2-chip-${status.id}`}>{status.label}</span>
+              </div>
+            </div>
+            <div>
+              <div className="label">Weeks above {CO2_OPS_LIMIT_MMHG.toFixed(1)} mmHg</div>
+              <div className="cabin-value">{weeksAbove}</div>
+            </div>
+          </div>
+          <p className="small muted">{CO2.context}</p>
+        </div>
+      )}
     </section>
   );
 }

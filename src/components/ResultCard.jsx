@@ -37,7 +37,7 @@ function HowToScan({ open = false }) {
  * Risk badge, ICP range and "What to do now" appear only when result.showClinical is true
  * (a real scale and no calibration warning).
  */
-export default function ResultCard({ result, onRecalibrate, onConfirmScale }) {
+export default function ResultCard({ result, onRecalibrate, onConfirmScale, co2 = null, onGenerateReport, reportBusy = false }) {
   if (!result) {
     return (
       <section className="card result-card">
@@ -47,6 +47,9 @@ export default function ResultCard({ result, onRecalibrate, onConfirmScale }) {
           diameter (ONSD).
         </p>
         <p className="muted small">{SCIENCE_NOTES.riskSignal}</p>
+        <button className="btn btn-primary report-btn" disabled title="Available after a measurement">
+          Generate report (PDF)
+        </button>
         <HowToScan open />
       </section>
     );
@@ -163,6 +166,16 @@ export default function ResultCard({ result, onRecalibrate, onConfirmScale }) {
           </div>
         </>
       )}
+
+      {co2 && (
+        <p className="co2-line small">
+          Cabin CO₂ at scan time (simulated): <strong>{co2.value.toFixed(1)} mmHg</strong> — {co2.status.label}
+        </p>
+      )}
+
+      <button className="btn btn-primary report-btn" onClick={onGenerateReport} disabled={reportBusy}>
+        Generate report (PDF)
+      </button>
 
       <p className="small muted">{SCIENCE_NOTES.riskSignal}</p>
       <HowToScan />
