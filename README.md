@@ -71,7 +71,8 @@ npm run build    # production build in dist/
 
 ## Live demo
 
-_To be added after deployment._
+**https://elif-tasdelen.github.io/aerosans/** — deployed automatically to GitHub Pages on every push
+to `main` (`.github/workflows/deploy.yml`: `npm ci`, `npm test`, `npm run build`).
 
 ## Limitations
 
@@ -80,6 +81,8 @@ A meta-analysis of 38 studies (Berhanu et al., 2023) shows that optimal ONSD cut
 Automatic edge detection was validated on synthetic phantoms (clean and realistic, tilted ±20°). On real ultrasound images, accuracy depends on image quality and on a correct scale; draggable edges and a manual mode are provided, and no mm value, risk or ICP is shown without a scale.
 
 Auto-detection was tuned on synthetic phantoms. Real-image performance is evaluated with a local validation harness on openly licensed images with expert measurements; results are reported only for those images.
+
+On real ultrasound images, automatic edges may sit inside expert caliper positions on blurred sheath borders, and auto-detection (beta) may fail; draggable edges and manual picking are provided.
 
 ## AI Usage Declaration
 
