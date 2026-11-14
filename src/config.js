@@ -16,6 +16,67 @@ export const ONSD_MAX_PLAUSIBLE_MM = 10.0;
 /** Minimum band contrast (0–255 grey levels) for automatic edge detection. */
 export const EDGE_MIN_CONTRAST = 20;
 
+// --- Axis-based measurement (any nerve direction) ------------------------------
+/** The second axis click must be at least this far from the globe point (mm, or px without a scale). */
+export const AXIS_MIN_DISTANCE_MM = 4;
+export const AXIS_MIN_DISTANCE_PX = 20;
+/** The profile is averaged over a strip of ±this distance along the nerve axis (mm). */
+export const PROFILE_STRIP_HALF_MM = 0.5;
+/** Gaussian smoothing of the profile (mm). */
+export const PROFILE_SIGMA_MM = 0.15;
+/** The band minimum is searched within ±this distance of the axis (mm). */
+export const EDGE_CENTER_SEARCH_MM = 2;
+/**
+ * Bright dura peaks are searched within this distance of the axis (mm).
+ * 4.5 mm (instead of 4 mm) keeps the far wall of a 7 mm sheath (wall centre ≈ 3.8 mm) in range.
+ */
+export const EDGE_PEAK_SEARCH_MM = 4.5;
+/** Contrast (grey levels) that counts as fully clear for the confidence score. */
+export const EDGE_CONTRAST_REF = 60;
+/** Confidence score cut-offs (0–1). Below MEDIUM the app switches to manual mode. */
+export const CONFIDENCE_HIGH = 0.7;
+export const CONFIDENCE_MEDIUM = 0.45;
+/** Globe-point snapping range along the axis (mm). */
+export const SNAP_RANGE_MM = 1;
+/** Parameters used when no scale is available (everything in pixels). */
+export const PIXEL_MODE = {
+  halfWidthPx: 200,
+  stripHalfPx: 4,
+  sigmaPx: 2,
+  centerSearchPx: 50,
+  peakSearchPx: 180,
+  minWidthPx: 20,
+  maxWidthPx: 400,
+};
+
+// --- Calibration -------------------------------------------------------------------
+/** Scale-bar segments shorter than this are rejected (px). */
+export const CALIB_MIN_SEGMENT_PX = 30;
+/** Calibration endpoints within this fraction of the ONSD length of the sheath edges trigger a warning. */
+export const CALIB_OVERLAP_TOLERANCE = 0.1;
+export const CALIBRATION_LABELS = {
+  scaleBar: 'Scale bar',
+  depth: 'Image depth',
+  none: 'No scale',
+  phantom: 'Scale bar (phantom metadata)',
+};
+
+export const MESSAGES = {
+  calibTooShort: 'Calibration segment too short — use a longer part of the scale.',
+  calibOverlap: 'Calibration should use a known scale, not the structure being measured.',
+  noScale: 'No scale — ONSD in mm, risk signal and ICP cannot be computed.',
+  clickGlobe:
+    'Click the posterior globe boundary where the nerve leaves the globe (bottom of the dark globe, just above the bright optic disc bump).',
+  clickAxis: 'Now click a point further down the nerve, in the center of the dark band (at least 4 mm away).',
+  clickAxisNoScale: 'Now click a point further down the nerve, in the center of the dark band.',
+  axisTooShort: 'That point is too close to the globe — click further down the nerve (at least 4 mm away).',
+  clickDepth: 'Click the point 3 mm behind the globe on the nerve (no scale, so the app cannot place it).',
+  edgesUnclear: 'Edges are unclear on this image — click the left and right inner edges of the bright sheath.',
+  edgesAuto: 'Edges detected automatically. Drag the edge markers along the yellow line to fine-tune.',
+  autoDetected: 'Auto-detected globe point and nerve axis. Check the overlay, then Accept or re-pick manually.',
+  autoUnreliable: 'Auto-detection is unreliable on this image — please pick the points manually.',
+};
+
 // --- Risk thresholds --------------------------------------------------------
 // Source: Maissan IM et al. J Neurosurg 2015;123(3):743-7. doi:10.3171/2014.10.JNS141197
 export const ONSD_BORDERLINE_MM = 5.0;
@@ -36,7 +97,26 @@ export const PHANTOM_ONSD_MIN_MM = 4.0;
 export const PHANTOM_ONSD_MAX_MM = 7.0;
 export const PHANTOM_ONSD_DEFAULT_MM = 5.2;
 
+// --- 3D eye view ---------------------------------------------------------------
+/** Globe radius in scene units represents ~12 mm, so 1 scene unit ≈ 12 mm. */
+export const EYE_MM_PER_UNIT = 12;
+/** Optic nerve (without sheath) diameter, shown at a fixed size (mm). */
+export const EYE_NERVE_DIAMETER_MM = 3;
+/** Default ONSD shown before any measurement exists (mm). */
+export const EYE_DEFAULT_ONSD_MM = 4.6;
+
 // --- Texts (from BIO) -----------------------------------------------------------
+/**
+ * Risk colors — the single source for the risk badge (exposed as CSS variables in main.jsx)
+ * and the 3D sheath. `neutral` is used when no calibrated measurement is linked.
+ */
+export const RISK_COLORS = {
+  normal: '#22c55e',
+  borderline: '#f59e0b',
+  high: '#ef4444',
+  neutral: '#94a3b8',
+};
+
 export const RISK_LABELS = {
   normal: 'Normal',
   borderline: 'Borderline',
@@ -79,5 +159,43 @@ export const SCIENCE_NOTES = {
   whyEye:
     "Spaceflight Associated Neuro-ocular Syndrome (SANS) is one of the health risks NASA's Human Research Program studies for long-duration missions. In microgravity, the loss of the normal head-to-foot pressure gradient shifts body fluids toward the head. SANS findings include optic disc edema, globe flattening and choroidal folds. The underlying mechanism is not fully understood, and changes in intracranial pressure may play a role. AeroSANS tracks the optic nerve sheath diameter (ONSD) as a non-invasive, repeatable signal so that changes can be noticed early and reviewed by the flight surgeon.",
 };
+
+// Tooltip texts for the clickable 3D eye parts (to be reviewed by BIO). No diagnostic claims.
+export const EYE_PART_INFO = {
+  globe: {
+    name: 'Globe (eyeball)',
+    function:
+      'The fluid-filled outer shell of the eye that keeps its shape. Flattening at the back of the globe has been reported in some long-duration astronauts.',
+    status: 'Globe shape is not measured by AeroSANS.',
+  },
+  retina: {
+    name: 'Retina',
+    function:
+      'Light-sensitive tissue lining the back of the eye. The optic disc, where the nerve leaves the eye, can swell (optic disc edema) in some SANS cases.',
+    status: 'Not measured by AeroSANS. The retina is assessed with other imaging methods.',
+  },
+  opticNerve: {
+    name: 'Optic nerve',
+    function:
+      'Carries visual signals from the retina to the brain. It leaves the back of the globe slightly toward the nose.',
+    status: 'Shown at a fixed size.',
+  },
+  sheath: {
+    name: 'Optic nerve sheath',
+    function:
+      'A fluid-filled sleeve of dura mater and cerebrospinal fluid around the optic nerve. Its diameter (ONSD) can widen when intracranial pressure rises.',
+    status:
+      'Measured by AeroSANS 3 mm behind the globe. The color shows the current risk signal, not a diagnosis.',
+  },
+};
+
+export const EYE_STATE_TEXT = {
+  noScale: 'Last measurement has no mm scale — the 3D view is not linked to it.',
+  unconfirmed: 'Last measurement has an unconfirmed scale — the 3D view is not linked to it.',
+  preview: 'Preview only — not a measurement.',
+};
+
+export const EYE_VIEW_NOTE =
+  'Illustrative model, approximately to scale. Colors are for orientation only. Click a part to learn more.';
 
 export const DISCLAIMER_TEXT = 'Research prototype — not a medical device. Not for diagnosis.';

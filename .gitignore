@@ -7,6 +7,11 @@ dist
 .env.*
 .claude/settings.local.json
 
+# Validation harness: real images and local results are never committed
+validation/images/
+validation/manifest.json
+validation/report.md
+
 # Internal working files (kept locally, not published)
 CLAUDE.md
 docs/

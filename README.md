@@ -23,11 +23,34 @@ Astronauts on Space Missions"*
 ## Features
 
 - Upload an ultrasound image or generate a deterministic **synthetic phantom** (ONSD 4.0–7.0 mm).
-- Scale calibration from two clicks on the scale bar (phantoms calibrate automatically).
-- Semi-automatic ONSD measurement 3 mm behind the globe, perpendicular to the nerve, with a
-  **manual fallback** when edge detection is not confident.
-- Result card: ONSD, colour-coded risk badge, ICP range (mmH₂O and mmHg), Wang 2017 limitation note,
-  "What to do now" action and "How to scan" instructions. Phantoms show ground truth vs measured error.
+- **Three calibration modes:**
+  - *Scale bar* — click both ends of a ruler or scale bar and enter its length. Segments shorter than
+    30 px are rejected, and a warning appears if the calibration segment sits on the measured sheath itself.
+  - *Image depth* — enter the depth shown on the scanner (cm) and click the top and bottom of the image field.
+  - *No scale* — the width is shown in pixels only; no mm value, risk signal, ICP or 3D-eye update.
+  - Phantoms calibrate automatically from their scale bar.
+- **Nerve-axis support:** two clicks (posterior globe boundary, then a point further down the nerve)
+  define the axis, so tilted nerves are measured perpendicular to their own direction. The globe click
+  snaps to the nearby vitreous–retina boundary.
+- **Robust edge detection:** a profile across the nerve 3 mm behind the globe, averaged over a ±0.5 mm
+  strip with bilinear sampling and Gaussian smoothing. Each edge is the 50 % point between the dark band
+  and the bright dura on that side (inner edge of the dura).
+- **Detection confidence** (high / medium / low) from contrast, symmetry and a plausible width. Low
+  confidence switches to manual mode automatically.
+- **Draggable edges:** fine-tune either edge along the measurement line; the result is labelled
+  "auto", "auto (adjusted)" or "manual".
+- **Realistic phantom option:** nerve tilt (−30° to +30°) and a "realistic" mode with grainier speckle,
+  blooming sheath walls, lower contrast, bright retrobulbar fat and an optic disc bump.
+- **Auto-detect globe & nerve (beta)** for uploaded images, with confidence and manual override: it
+  proposes the posterior globe point and the nerve axis (globe circle fit + nerve-band line fit), and
+  the user accepts or re-picks them.
+- **Local validation harness** (`npm run validate`, see `validation/README.md`) to compare automatic
+  measurements with expert measurements on openly licensed images that are kept out of the repository.
+- Result card: ONSD, method, confidence, calibration mode, colour-coded risk badge, ICP range (mmH₂O and
+  mmHg), Wang 2017 limitation note, "What to do now" action and "How to scan" instructions. Risk, ICP
+  and actions appear only with a real scale. Phantoms show ground truth vs measured error.
+- Procedural 3D eye (Three.js, no external models): the optic nerve sheath widens and shifts from green
+  to yellow to red with ONSD. Parts are clickable and explain their function and status.
 
 ## How to run
 
@@ -45,6 +68,10 @@ _To be added after deployment._
 ## Limitations
 
 A meta-analysis of 38 studies (Berhanu et al., 2023) shows that optimal ONSD cut-off values for detecting elevated ICP vary widely, from 4.1 mm to 7.2 mm. Because there is no single universal threshold, AeroSANS uses 5.0 mm and 5.7 mm as commonly used literature reference points, not as diagnostic triggers. The main value of AeroSANS is tracking the relative ONSD trend of each astronaut over a mission, not giving a single-point diagnosis. The ICP estimate (Wang et al., 2017) comes from Earth-based patients and has not been validated in microgravity.
+
+Automatic edge detection was validated on synthetic phantoms (clean and realistic, tilted ±20°). On real ultrasound images, accuracy depends on image quality and on a correct scale; draggable edges and a manual mode are provided, and no mm value, risk or ICP is shown without a scale.
+
+Auto-detection was tuned on synthetic phantoms. Real-image performance is evaluated with a local validation harness on openly licensed images with expert measurements; results are reported only for those images.
 
 ## AI Usage Declaration
 
@@ -93,9 +120,12 @@ AI-assisted files: all files in src/ and tests/, index.html, vite.config.js, pub
 | Library | Version | License |
 |---|---|---|
 | React / React DOM | 18.3.1 | MIT |
+| three (Three.js) | 0.170.0 | MIT |
 | Vite | 5.4.11 | MIT |
 | @vitejs/plugin-react | 4.3.4 | MIT |
 | Vitest | 2.1.8 | MIT |
+| pngjs (validation harness only) | 7.0.0 | MIT |
+| jpeg-js (validation harness only) | 0.4.4 | BSD-3-Clause |
 
 ## License
 

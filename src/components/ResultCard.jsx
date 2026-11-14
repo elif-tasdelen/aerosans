@@ -1,7 +1,7 @@
-import { classifyRisk, estimateIcp } from '../lib/measure.js';
 import {
   ACTIONS,
   HOW_TO_SCAN,
+  MESSAGES,
   ONSD_BORDERLINE_MM,
   ONSD_HIGH_MM,
   RISK_LABELS,
@@ -10,6 +10,7 @@ import {
 } from '../config.js';
 
 const fmt = (v, digits = 0) => v.toFixed(digits);
+const CONFIDENCE_TEXT = { high: 'High', medium: 'Medium', low: 'Low' };
 
 /** Signed error with 2 decimals; values that round to zero show as "0.00 mm" (no sign). */
 function formatSignedMm(diff) {
@@ -32,12 +33,12 @@ function HowToScan({ open = false }) {
 }
 
 /**
- * Result panel: ONSD, colour-coded risk badge, ICP range, limitation notes,
- * "What to do now" action and scanning instructions.
- * Props: onsdMm (number | null), mode ('auto' | 'manual'), groundTruthMm (number, phantoms only).
+ * Result panel. `result` comes from buildResultState (src/lib/result.js).
+ * Risk badge, ICP range and "What to do now" appear only when result.showClinical is true
+ * (a real scale and no calibration warning).
  */
-export default function ResultCard({ onsdMm, mode, groundTruthMm }) {
-  if (onsdMm == null) {
+export default function ResultCard({ result, onRecalibrate, onConfirmScale }) {
+  if (!result) {
     return (
       <section className="card result-card">
         <h2>Result</h2>
@@ -51,33 +52,72 @@ export default function ResultCard({ onsdMm, mode, groundTruthMm }) {
     );
   }
 
-  const risk = classifyRisk(onsdMm);
-  const icp = estimateIcp(onsdMm);
-  const hasTruth = typeof groundTruthMm === 'number';
+  const { onsdMm, widthPx, method, level, confidence, calibrationLabel, calibrationWarning, showClinical, risk, icp, groundTruthMm } =
+    result;
+  const hasTruth = typeof groundTruthMm === 'number' && onsdMm != null;
 
   return (
-    <section className={`card result-card risk-${risk}`}>
+    <section className={`card result-card ${showClinical ? `risk-${risk}` : 'risk-none'}`}>
       <h2>Result</h2>
 
       <div className="result-main">
         <div>
-          <div className="label">ONSD ({mode === 'manual' ? 'manual edges' : 'automatic edges'})</div>
+          <div className="label">ONSD</div>
           <div className="onsd-value">
-            {fmt(onsdMm, 2)} <span className="unit">mm</span>
+            {onsdMm != null ? (
+              <>
+                {fmt(onsdMm, 2)} <span className="unit">mm</span>
+              </>
+            ) : (
+              <>
+                {fmt(widthPx, 1)} <span className="unit">px</span>
+              </>
+            )}
           </div>
         </div>
-        <div className={`risk-badge risk-badge-${risk}`} aria-label={`Risk signal: ${RISK_LABELS[risk]}`}>
-          {RISK_LABELS[risk]}
+        {showClinical ? (
+          <div className={`risk-badge risk-badge-${risk}`} aria-label={`Risk signal: ${RISK_LABELS[risk]}`}>
+            {RISK_LABELS[risk]}
+          </div>
+        ) : (
+          <div className="risk-badge risk-badge-none">No risk signal</div>
+        )}
+      </div>
+
+      <dl className="result-meta">
+        <div>
+          <dt>Method</dt>
+          <dd>{method}</dd>
         </div>
-      </div>
+        <div>
+          <dt>Detection confidence</dt>
+          <dd>
+            {level && method !== 'manual'
+              ? `${CONFIDENCE_TEXT[level]} (${Math.round(confidence * 100)}%)`
+              : '— (manual edges)'}
+          </dd>
+        </div>
+        <div>
+          <dt>Calibration</dt>
+          <dd>{calibrationLabel}</dd>
+        </div>
+      </dl>
 
-      <p>{RISK_SUMMARIES[risk]}</p>
-
-      <div className="thresholds small muted">
-        Thresholds: normal &lt; {ONSD_BORDERLINE_MM.toFixed(1)} mm · borderline{' '}
-        {ONSD_BORDERLINE_MM.toFixed(1)}–{ONSD_HIGH_MM.toFixed(1)} mm · high ≥ {ONSD_HIGH_MM.toFixed(1)} mm
-      </div>
-      <p className="thresholds-note small muted">{SCIENCE_NOTES.thresholds}</p>
+      {!showClinical && (
+        <div className="warning-box" role="status">
+          <p>{calibrationWarning ?? MESSAGES.noScale}</p>
+          {calibrationWarning && (
+            <div className="row">
+              <button className="btn btn-primary" onClick={onRecalibrate}>
+                Recalibrate
+              </button>
+              <button className="btn btn-ghost" onClick={onConfirmScale}>
+                The scale is independent — continue
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {hasTruth && (
         <div className="truth-box">
@@ -96,22 +136,33 @@ export default function ResultCard({ onsdMm, mode, groundTruthMm }) {
         </div>
       )}
 
-      <div className="icp-box">
-        <div className="label">Estimated ICP range</div>
-        <div className="icp-range">
-          {fmt(icp.mmH2O.low)}–{fmt(icp.mmH2O.high)} mmH₂O
-          <span className="muted"> ({fmt(icp.mmHg.low, 1)}–{fmt(icp.mmHg.high, 1)} mmHg)</span>
-        </div>
-        <p className="small muted">
-          {SCIENCE_NOTES.wang} The range reflects ±{icp.errorMm.toFixed(1)} mm measurement error. It
-          is an estimate, not an exact pressure value.
-        </p>
-      </div>
+      {showClinical && (
+        <>
+          <p>{RISK_SUMMARIES[risk]}</p>
+          <div className="thresholds small muted">
+            Thresholds: normal &lt; {ONSD_BORDERLINE_MM.toFixed(1)} mm · borderline{' '}
+            {ONSD_BORDERLINE_MM.toFixed(1)}–{ONSD_HIGH_MM.toFixed(1)} mm · high ≥ {ONSD_HIGH_MM.toFixed(1)} mm
+          </div>
+          <p className="thresholds-note small muted">{SCIENCE_NOTES.thresholds}</p>
 
-      <div className={`action-box action-${risk}`}>
-        <div className="label">What to do now</div>
-        <p className="action-text">{ACTIONS[risk]}</p>
-      </div>
+          <div className="icp-box">
+            <div className="label">Estimated ICP range</div>
+            <div className="icp-range">
+              {fmt(icp.mmH2O.low)}–{fmt(icp.mmH2O.high)} mmH₂O
+              <span className="muted"> ({fmt(icp.mmHg.low, 1)}–{fmt(icp.mmHg.high, 1)} mmHg)</span>
+            </div>
+            <p className="small muted">
+              {SCIENCE_NOTES.wang} The range reflects ±{icp.errorMm.toFixed(1)} mm measurement error. It
+              is an estimate, not an exact pressure value.
+            </p>
+          </div>
+
+          <div className={`action-box action-${risk}`}>
+            <div className="label">What to do now</div>
+            <p className="action-text">{ACTIONS[risk]}</p>
+          </div>
+        </>
+      )}
 
       <p className="small muted">{SCIENCE_NOTES.riskSignal}</p>
       <HowToScan />

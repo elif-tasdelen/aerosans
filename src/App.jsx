@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import Disclaimer from './components/Disclaimer.jsx';
 import MeasureScreen from './components/MeasureScreen.jsx';
+import Eye3D from './components/Eye3D.jsx';
 import { SCIENCE_NOTES } from './config.js';
 
 export default function App() {
   // Latest measurement, shared with later modules (3D eye, trend chart).
-  const [, setResult] = useState(null);
+  const [result, setResult] = useState(null);
 
   return (
     <div className="app">
@@ -25,6 +26,8 @@ export default function App() {
 
       <main>
         <MeasureScreen onResult={setResult} />
+        {/* The eye is linked to a measurement only when it has a real scale (see eyeViewState). */}
+        <Eye3D latest={result} />
       </main>
 
       <footer className="app-footer small muted">
