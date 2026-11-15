@@ -131,6 +131,7 @@ export default function App() {
           co2={co2}
           side={<Eye3D latest={result} />}
           onAddToTimeline={addToTimeline}
+          onSwitchCrew={setCrewId}
         />
 
         <div className="tabs" role="tablist" aria-label="More information">

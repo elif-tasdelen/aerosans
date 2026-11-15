@@ -5,6 +5,8 @@ import {
   addTimelinePoint,
   CREW_SCANS,
   crewScan,
+  matchCrewScan,
+  sampleCalibrationLabel,
   resetTimeline,
   SAMPLE_MM_PER_PX,
   seriesWithAdded,
@@ -36,6 +38,31 @@ describe('crew sample scans (simulated)', () => {
       expect(existsSync(`public/${crewScan(id).path}`)).toBe(true);
     }
     expect(crewScan('nope').crewId).toBe('A');
+  });
+});
+
+describe('recognising an uploaded crew scan by its file name', () => {
+  it('matches each sample file to its crew member with mmPerPx = 0.04', () => {
+    expect(matchCrewScan('crewA_scan_onsd54.png')).toMatchObject({ crewId: 'A', mmPerPx: 0.04, groundTruthMm: 5.4 });
+    expect(matchCrewScan('crewB_scan_onsd46.png')).toMatchObject({ crewId: 'B', mmPerPx: 0.04, groundTruthMm: 4.6 });
+    expect(matchCrewScan('crewC_scan_onsd62.png')).toMatchObject({ crewId: 'C', mmPerPx: 0.04, groundTruthMm: 6.2 });
+    expect(sampleCalibrationLabel(matchCrewScan('crewA_scan_onsd54.png'))).toBe('Image depth (40 mm, simulated scan)');
+  });
+
+  it('ignores case, folders and a download suffix', () => {
+    expect(matchCrewScan('CREWA_SCAN_ONSD54.PNG')?.crewId).toBe('A');
+    expect(matchCrewScan('C:\\Users\\me\\Downloads\\crewB_scan_onsd46.png')?.crewId).toBe('B');
+    expect(matchCrewScan('samples/crewC_scan_onsd62.png')?.crewId).toBe('C');
+    expect(matchCrewScan('crewA_scan_onsd54 (1).png')?.crewId).toBe('A');
+  });
+
+  it('returns null for any other file', () => {
+    expect(matchCrewScan('ultra1.png')).toBeNull();
+    expect(matchCrewScan('crewA_scan_onsd54.jpg')).toBeNull();
+    expect(matchCrewScan('crewD_scan_onsd50.png')).toBeNull();
+    expect(matchCrewScan('my_crewA_scan_onsd54.png')).toBeNull();
+    expect(matchCrewScan('')).toBeNull();
+    expect(matchCrewScan(undefined)).toBeNull();
   });
 });
 

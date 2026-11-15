@@ -30,6 +30,28 @@ export function crewScan(crewId) {
   };
 }
 
+/** Calibration label shown for a recognised sample scan. */
+export function sampleCalibrationLabel(scan) {
+  return `Image depth (${scan.depthMm} mm, simulated scan)`;
+}
+
+/**
+ * Recognise a crew sample scan by its file name (case-insensitive; a folder path and a browser
+ * download suffix such as " (1)" are ignored).
+ * @returns {null | { crewId, file, path, mmPerPx, depthMm, groundTruthMm, label }}
+ */
+export function matchCrewScan(fileName) {
+  if (typeof fileName !== 'string') return null;
+  const base = fileName
+    .split(/[\\/]/)
+    .pop()
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\(\d+\)(?=\.[a-z0-9]+$)/, '');
+  const id = Object.keys(CREW_SCANS).find((k) => CREW_SCANS[k].file.toLowerCase() === base);
+  return id ? crewScan(id) : null;
+}
+
 /** Baseline series followed by the points measured in the app. */
 export function seriesWithAdded(series, added = []) {
   return [...series, ...added];

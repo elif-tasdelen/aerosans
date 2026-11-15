@@ -875,3 +875,5 @@ a { color: var(--accent); }
   animation: fade-in 0.18s ease-out;
 }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+.load-demo { font-size: 0.85rem; padding: 6px 12px; margin-top: 4px; }

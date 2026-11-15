@@ -36,7 +36,8 @@ import {
 import pkg from '../../package.json';
 import ResultCard from './ResultCard.jsx';
 import { BrandLogo } from './Brand.jsx';
-import { crewScan } from '../lib/crewScan.js';
+import { crewScan, matchCrewScan, sampleCalibrationLabel } from '../lib/crewScan.js';
+import { getCrew } from '../lib/crew.js';
 import { renderReportPdf } from './reportPdf.js';
 
 const MAX_UPLOAD_WIDTH = 900;
@@ -122,10 +123,10 @@ function loadImageUrl(url, maxWidth = MAX_UPLOAD_WIDTH) {
 }
 
 /** Load an uploaded File. */
-async function loadImageFile(file) {
+async function loadImageFile(file, maxWidth = MAX_UPLOAD_WIDTH) {
   const url = URL.createObjectURL(file);
   try {
-    return await loadImageUrl(url);
+    return await loadImageUrl(url, maxWidth);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -180,7 +181,7 @@ function drawEdgeMarker(ctx, p, u, color) {
   ctx.fill();
 }
 
-export default function MeasureScreen({ onResult, crew, series = [], co2 = [], side = null, onAddToTimeline = null }) {
+export default function MeasureScreen({ onResult, crew, series = [], co2 = [], side = null, onAddToTimeline = null, onSwitchCrew = null }) {
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
   const dragRef = useRef(null); // 'left' | 'right' | null
@@ -208,6 +209,8 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
   const [measurement, setMeasurement] = useState(null);
   const [manualPts, setManualPts] = useState([]);
   const [proposal, setProposal] = useState(null); // auto-detect result waiting for Accept / Re-pick
+  const [crewMismatch, setCrewMismatch] = useState(null); // crew id of an uploaded scan that belongs to someone else
+  const keepScanOnCrewChangeRef = useRef(false);
   const [addedKey, setAddedKey] = useState(null); // measurement already added to the timeline
   const [viewStep, setViewStep] = useState(null); // earlier step opened from the stepper, or null
   const [notice, setNotice] = useState('');
@@ -286,6 +289,7 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
   };
 
   const reset = () => {
+    setCrewMismatch(null);
     clearMeasurement();
     clearCalibration();
     setSource(null);
@@ -310,30 +314,11 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
     setNotice(`Phantom generated and auto-calibrated from its ${sb.lengthMm} mm scale bar. ${MESSAGES.clickGlobe}`);
   };
 
-  // Today's simulated scan of the selected crew member (public/samples/), calibrated automatically.
+  // "No scan file?" link: the selected crew member's sample scan straight from public/samples/.
   const handleLoadCrewScan = async () => {
     const scan = crewScan(crew?.id);
     try {
-      const img = await loadImageUrl(`${import.meta.env.BASE_URL}${scan.path}`, Infinity);
-      clearMeasurement();
-      setSource({
-        kind: 'upload',
-        name: scan.file,
-        simulated: true,
-        crewId: scan.crewId,
-        groundTruthOnsdMm: scan.groundTruthMm,
-        ...img,
-      });
-      setCalMode('depth');
-      setCalibPts([]);
-      setCalibration({
-        mode: 'depth',
-        mmPerPx: scan.mmPerPx,
-        points: [],
-        auto: true,
-        label: `Image depth (${scan.depthMm} mm, simulated scan)`,
-      });
-      setNotice(`${scan.label} loaded for ${crew.name}, calibrated from its ${scan.depthMm} mm image depth. Press Auto-Measure.`);
+      applyCrewScan(await loadImageUrl(`${import.meta.env.BASE_URL}${scan.path}`, Infinity), scan);
     } catch (err) {
       setNotice(`The sample scan could not be loaded: ${err.message}`);
     }
@@ -344,6 +329,11 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
   useEffect(() => {
     if (crewIdRef.current === crew?.id) return;
     crewIdRef.current = crew?.id;
+    setCrewMismatch(null);
+    if (keepScanOnCrewChangeRef.current) {
+      keepScanOnCrewChangeRef.current = false; // "Switch" on the mismatch warning keeps the scan
+      return;
+    }
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crew?.id]);
@@ -354,19 +344,49 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
     handleGenerate(next);
   };
 
+  // A recognised crew sample scan (uploaded or loaded from public/samples/): simulated, with a
+  // known scale, so it is calibrated automatically.
+  const applyCrewScan = (img, scan) => {
+    clearMeasurement();
+    setSource({
+      kind: 'upload',
+      name: scan.file,
+      simulated: true,
+      crewId: scan.crewId,
+      groundTruthOnsdMm: scan.groundTruthMm,
+      ...img,
+    });
+    setCalMode('depth');
+    setCalibPts([]);
+    setCalibration({ mode: 'depth', mmPerPx: scan.mmPerPx, points: [], auto: true, label: sampleCalibrationLabel(scan) });
+    setCrewMismatch(scan.crewId !== crew?.id ? scan.crewId : null);
+    setNotice(
+      `${scan.label} of ${getCrew(scan.crewId).name} loaded and calibrated from its ${scan.depthMm} mm image depth. Press Auto-Measure.`
+    );
+  };
+
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      const scan = matchCrewScan(file.name);
+      if (scan) {
+        // Sample scans keep their own pixels, so the known scale stays exact.
+        applyCrewScan(await loadImageFile(file, Infinity), scan);
+        return;
+      }
       const img = await loadImageFile(file);
       clearMeasurement();
       clearCalibration();
+      setCrewMismatch(null);
       setSource({ kind: 'upload', name: file.name, ...img });
       setNotice(
         `${img.scaleFactor < 1 ? 'Large image was downscaled for display. ' : ''}Choose how to calibrate the scale.`
       );
     } catch (err) {
       setNotice(err.message);
+    } finally {
+      e.target.value = ''; // the same file can be chosen again
     }
   };
 
@@ -796,19 +816,17 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
     <div className="load-actions">
       <button
         className={`btn ${primary ? 'btn-primary' : ''}`}
-        onClick={handleLoadCrewScan}
-        aria-label={`Load today's simulated scan for ${crew?.name}`}
+        onClick={() => fileRef.current?.click()}
+        aria-label={`Upload today's scan for ${crew?.name}: choose an image file`}
       >
-        Load today&apos;s scan for {crew?.name}
+        Upload today&apos;s scan for {crew?.name}
       </button>
-      <div className="row load-secondary">
-        <button className="btn" onClick={() => handleGenerate()} aria-label="Use the demo phantom: generate a synthetic ultrasound image">
-          Use demo phantom
-        </button>
-        <label className="btn" htmlFor="file-input" tabIndex={0} aria-label="Upload an ultrasound image">
-          Upload image
-        </label>
-      </div>
+      <button className="link-btn" onClick={handleLoadCrewScan}>
+        No scan file? Use {crew?.name}&apos;s sample scan
+      </button>
+      <button className="btn load-demo" onClick={() => handleGenerate()} aria-label="Use the demo phantom: generate a synthetic ultrasound image">
+        Use demo phantom
+      </button>
     </div>
   );
 
@@ -884,13 +902,14 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
       </ol>
 
       <div className="flow-grid">
-        <section className="card step-card" key={shown} aria-live="polite">
+        {/* No `key` here: the canvas must stay mounted when the shown step changes. */}
+        <section className="card step-card" aria-live="polite">
           {/* ① Load scan */}
           {shown === 1 && !source && (
             <div className="empty-state">
               <BrandLogo />
               <p className="empty-lead">
-                No scan yet — load today&apos;s scan for {crew?.name}. AeroSANS measures the optic nerve sheath diameter (ONSD) on an
+                No scan yet — upload today&apos;s scan for {crew?.name}. AeroSANS measures the optic nerve sheath diameter (ONSD) on an
                 eye ultrasound image and turns it into a risk signal for spaceflight-associated neuro-ocular
                 syndrome (SANS).
               </p>
@@ -976,6 +995,29 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
             </>
           )}
 
+          {crewMismatch && source && (
+            <div className="warning-box" role="alert">
+              <p>
+                This scan belongs to {getCrew(crewMismatch).name} — switch crew or continue?
+              </p>
+              <div className="row">
+                <button
+                  className="btn"
+                  onClick={() => {
+                    keepScanOnCrewChangeRef.current = true;
+                    onSwitchCrew?.(crewMismatch);
+                    setCrewMismatch(null);
+                  }}
+                >
+                  Switch
+                </button>
+                <button className="btn" onClick={() => setCrewMismatch(null)}>
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ② Measure */}
           {shown === 2 && (
             <>
@@ -1052,7 +1094,7 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
           {source?.kind === 'upload' && !source.simulated && <p className="small muted real-note">{MESSAGES.realImageNote}</p>}
           {source?.simulated && (
             <p className="small muted">
-              Simulated scan — code-generated for {crew?.name}, not a real patient image (ground-truth ONSD{' '}
+              Simulated scan — code-generated for {getCrew(source.crewId).name}, not a real patient image (ground-truth ONSD{' '}
               {source.groundTruthOnsdMm.toFixed(1)} mm).
             </p>
           )}

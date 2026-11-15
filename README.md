@@ -23,10 +23,13 @@ Astronauts on Space Missions"*
 ## Features
 
 - **Three-step flow:** ① Load scan → ② Measure → ③ Result, shown as a stepper with one primary action
-  per step ("Load today's scan for Crew Member X", "Auto-Measure", "Generate report (PDF)"). Finished steps can be opened
+  per step ("Upload today's scan for Crew Member X", "Auto-Measure", "Generate report (PDF)"). Finished steps can be opened
   again without losing the measurement. The 3D eye and a result summary stay next to the active step.
-- **Crew scan → timeline:** "Load today's scan for Crew Member X" loads that crew member's simulated
-  sample scan (labelled "Simulated scan", calibrated automatically at 0.04 mm/px, image depth 40 mm).
+- **Crew scan → timeline:** "Upload today's scan for Crew Member X" opens the file picker. A file that
+  is one of the simulated crew sample scans (recognised by its file name) is labelled "Simulated scan"
+  and calibrated automatically (0.04 mm/px, image depth 40 mm); if it belongs to another crew member
+  the app asks whether to switch crew or continue. Any other image goes through the normal calibration
+  choice. "No scan file? Use Crew Member X's sample scan" loads the sample directly.
   After measuring, "Add to Crew Member X timeline" adds the value to that crew member's mission trend,
   7 days after the last point, as a larger filled marker in the risk color ("Measured in AeroSANS"
   next to the "Simulated baseline"). The app switches to the Mission trend tab and confirms with a short
