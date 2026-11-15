@@ -36,6 +36,7 @@ import {
 import pkg from '../../package.json';
 import ResultCard from './ResultCard.jsx';
 import { BrandLogo } from './Brand.jsx';
+import { crewScan } from '../lib/crewScan.js';
 import { renderReportPdf } from './reportPdf.js';
 
 const MAX_UPLOAD_WIDTH = 900;
@@ -94,13 +95,12 @@ function greyToImageData(ctx, pixels, width, height) {
   return data;
 }
 
-/** Load an uploaded File into a greyscale image (downscaled if very wide). */
-function loadImageFile(file) {
+/** Load an image URL into a greyscale + RGBA image (downscaled if wider than maxWidth). */
+function loadImageUrl(url, maxWidth = MAX_UPLOAD_WIDTH) {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, MAX_UPLOAD_WIDTH / img.naturalWidth);
+      const scale = Math.min(1, maxWidth / img.naturalWidth);
       const width = Math.max(1, Math.round(img.naturalWidth * scale));
       const height = Math.max(1, Math.round(img.naturalHeight * scale));
       const canvas = document.createElement('canvas');
@@ -113,16 +113,22 @@ function loadImageFile(file) {
       for (let i = 0; i < pixels.length; i++) {
         pixels[i] = Math.round(0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]);
       }
-      URL.revokeObjectURL(url);
       // The RGBA copy is kept so coloured annotations can be recognised and removed before measuring.
       resolve({ pixels, rgba, width, height, scaleFactor: scale });
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('This file could not be read as an image.'));
-    };
+    img.onerror = () => reject(new Error('This file could not be read as an image.'));
     img.src = url;
   });
+}
+
+/** Load an uploaded File. */
+async function loadImageFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    return await loadImageUrl(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function drawLabel(ctx, text, x, y, color) {
@@ -174,7 +180,7 @@ function drawEdgeMarker(ctx, p, u, color) {
   ctx.fill();
 }
 
-export default function MeasureScreen({ onResult, crew, series = [], co2 = [], side = null }) {
+export default function MeasureScreen({ onResult, crew, series = [], co2 = [], side = null, onAddToTimeline = null }) {
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
   const dragRef = useRef(null); // 'left' | 'right' | null
@@ -202,6 +208,7 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
   const [measurement, setMeasurement] = useState(null);
   const [manualPts, setManualPts] = useState([]);
   const [proposal, setProposal] = useState(null); // auto-detect result waiting for Accept / Re-pick
+  const [addedKey, setAddedKey] = useState(null); // measurement already added to the timeline
   const [viewStep, setViewStep] = useState(null); // earlier step opened from the stepper, or null
   const [notice, setNotice] = useState('');
 
@@ -239,12 +246,12 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
         widthPx: measurement.widthPx,
         mmPerPx,
         calibrationMode: calibration.mode,
-        calibrationLabel: calibration.auto ? CALIBRATION_LABELS.phantom : CALIBRATION_LABELS[calibration.mode],
+        calibrationLabel: calibration.label ?? (calibration.auto ? CALIBRATION_LABELS.phantom : CALIBRATION_LABELS[calibration.mode]),
         calibrationWarning,
         method: measurement.method,
         confidence: measurement.confidence,
         level: measurement.level,
-        groundTruthMm: source?.kind === 'phantom' ? source.groundTruthOnsdMm : null,
+        groundTruthMm: source?.groundTruthOnsdMm ?? null,
       })
     : null;
 
@@ -302,6 +309,44 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
     });
     setNotice(`Phantom generated and auto-calibrated from its ${sb.lengthMm} mm scale bar. ${MESSAGES.clickGlobe}`);
   };
+
+  // Today's simulated scan of the selected crew member (public/samples/), calibrated automatically.
+  const handleLoadCrewScan = async () => {
+    const scan = crewScan(crew?.id);
+    try {
+      const img = await loadImageUrl(`${import.meta.env.BASE_URL}${scan.path}`, Infinity);
+      clearMeasurement();
+      setSource({
+        kind: 'upload',
+        name: scan.file,
+        simulated: true,
+        crewId: scan.crewId,
+        groundTruthOnsdMm: scan.groundTruthMm,
+        ...img,
+      });
+      setCalMode('depth');
+      setCalibPts([]);
+      setCalibration({
+        mode: 'depth',
+        mmPerPx: scan.mmPerPx,
+        points: [],
+        auto: true,
+        label: `Image depth (${scan.depthMm} mm, simulated scan)`,
+      });
+      setNotice(`${scan.label} loaded for ${crew.name}, calibrated from its ${scan.depthMm} mm image depth. Press Auto-Measure.`);
+    } catch (err) {
+      setNotice(`The sample scan could not be loaded: ${err.message}`);
+    }
+  };
+
+  // Another crew member: back to step ① with that crew member's scan on offer.
+  const crewIdRef = useRef(crew?.id);
+  useEffect(() => {
+    if (crewIdRef.current === crew?.id) return;
+    crewIdRef.current = crew?.id;
+    reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crew?.id]);
 
   const handleNewSeed = () => {
     const next = Math.floor(Math.random() * 1e6);
@@ -746,18 +791,24 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
   };
   const instruction = notice || STEPS[step - 1].text;
 
-  const loadButtons = (primaryDemo) => (
-    <div className="row load-actions">
+  const measurementKey = result ? `${result.widthPx}|${result.onsdMm}|${result.method}` : null;
+  const loadButtons = (primary) => (
+    <div className="load-actions">
       <button
-        className={`btn ${primaryDemo ? 'btn-primary' : ''}`}
-        onClick={() => handleGenerate()}
-        aria-label="Use the demo phantom: generate a synthetic ultrasound image"
+        className={`btn ${primary ? 'btn-primary' : ''}`}
+        onClick={handleLoadCrewScan}
+        aria-label={`Load today's simulated scan for ${crew?.name}`}
       >
-        Use demo phantom
+        Load today&apos;s scan for {crew?.name}
       </button>
-      <label className="btn" htmlFor="file-input" tabIndex={0} aria-label="Upload an ultrasound image">
-        Upload image
-      </label>
+      <div className="row load-secondary">
+        <button className="btn" onClick={() => handleGenerate()} aria-label="Use the demo phantom: generate a synthetic ultrasound image">
+          Use demo phantom
+        </button>
+        <label className="btn" htmlFor="file-input" tabIndex={0} aria-label="Upload an ultrasound image">
+          Upload image
+        </label>
+      </div>
     </div>
   );
 
@@ -839,7 +890,7 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
             <div className="empty-state">
               <BrandLogo />
               <p className="empty-lead">
-                No scan yet — try the demo phantom. AeroSANS measures the optic nerve sheath diameter (ONSD) on an
+                No scan yet — load today&apos;s scan for {crew?.name}. AeroSANS measures the optic nerve sheath diameter (ONSD) on an
                 eye ultrasound image and turns it into a risk signal for spaceflight-associated neuro-ocular
                 syndrome (SANS).
               </p>
@@ -851,7 +902,7 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
           {shown === 1 && source && (
             <>
               <h2>Load a scan</h2>
-              {loadButtons(!calibration && source.kind !== 'upload')}
+              {loadButtons(false)}
               {phantomOptions}
               {source.kind === 'upload' && !calibration && (
                 <div className="calib-panel">
@@ -908,8 +959,8 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
               )}
               {calibration && (
                 <p className="small muted">
-                  Scale: {calibration.auto ? CALIBRATION_LABELS.phantom : CALIBRATION_LABELS[calibration.mode]}.{' '}
-                  {source.kind === 'upload' && (
+                  Scale: {calibration.label ?? (calibration.auto ? CALIBRATION_LABELS.phantom : CALIBRATION_LABELS[calibration.mode])}.{' '}
+                  {source.kind === 'upload' && !source.simulated && (
                     <button
                       className="link-btn"
                       onClick={() => {
@@ -995,9 +1046,16 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
                 </div>
               )}
               {clickHint && <div className="canvas-hint">{clickHint}</div>}
+              {source.simulated && <div className="sim-chip">Simulated scan</div>}
             </div>
           )}
-          {source?.kind === 'upload' && <p className="small muted real-note">{MESSAGES.realImageNote}</p>}
+          {source?.kind === 'upload' && !source.simulated && <p className="small muted real-note">{MESSAGES.realImageNote}</p>}
+          {source?.simulated && (
+            <p className="small muted">
+              Simulated scan — code-generated for {crew?.name}, not a real patient image (ground-truth ONSD{' '}
+              {source.groundTruthOnsdMm.toFixed(1)} mm).
+            </p>
+          )}
           {source?.kind === 'phantom' && (
             <p className="small muted">
               Simulated data — synthetic phantom (seed {source.seed}, {source.realism}, tilt {source.tiltDeg}°).
@@ -1018,6 +1076,16 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [], s
               reportBusy={reportState !== 'idle'}
               onMeasureAgain={measureAgain}
               onManualEdges={measurement?.method !== 'manual' ? switchToManual : null}
+              crewName={crew?.name}
+              addedToTimeline={addedKey === measurementKey}
+              onAddToTimeline={
+                onAddToTimeline
+                  ? () => {
+                      onAddToTimeline(result.onsdMm);
+                      setAddedKey(measurementKey);
+                    }
+                  : null
+              }
             />
           )}
         </section>

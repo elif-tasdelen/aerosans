@@ -42,6 +42,9 @@ export default function ResultCard({
   reportBusy = false,
   onMeasureAgain,
   onManualEdges = null,
+  onAddToTimeline = null,
+  crewName = '',
+  addedToTimeline = false,
 }) {
   if (!result) return null;
 
@@ -183,6 +186,16 @@ export default function ResultCard({
         >
           Generate report (PDF)
         </button>
+        {onAddToTimeline && (
+          <button
+            className="btn btn-accent"
+            onClick={onAddToTimeline}
+            disabled={!showClinical || addedToTimeline}
+            title={showClinical ? undefined : 'Needs a measurement in mm (with a scale)'}
+          >
+            {addedToTimeline ? 'Added to timeline ✓' : `Add to ${crewName} timeline`}
+          </button>
+        )}
         <button className="btn" onClick={onMeasureAgain}>
           Measure again
         </button>

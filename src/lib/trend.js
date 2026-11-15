@@ -18,16 +18,16 @@ export function segmentColors(series) {
  * Chart.js data for the mission trend: the ONSD series (points and segments colored by risk)
  * plus two dashed threshold lines at the borderline and high thresholds.
  */
-export function trendChartData(series, co2Series = null) {
+export function trendChartData(series, co2Series = null, added = []) {
   const days = series.map((p) => p.day);
   const x0 = Math.min(...days);
-  const x1 = Math.max(...days);
+  const x1 = Math.max(...days, ...added.map((p) => p.day));
   const colors = pointColors(series);
   const segColors = segmentColors(series);
   return {
     datasets: [
       {
-        label: 'ONSD (simulated)',
+        label: 'Simulated baseline',
         data: series.map((p) => ({ x: p.day, y: p.onsd })),
         pointBackgroundColor: colors,
         pointBorderColor: colors,
@@ -61,7 +61,36 @@ export function trendChartData(series, co2Series = null) {
       },
       // Optional cabin CO2 context on the right axis (simulated; no causal link is modeled).
       ...(co2Series ? co2Datasets(co2Series) : []),
+      // Points measured in the app and added to the timeline (always the last dataset).
+      ...(added.length ? [measuredDataset(series, added)] : []),
     ],
+  };
+}
+
+export const MEASURED_LABEL = 'Measured in AeroSANS';
+
+/**
+ * Dataset of the points measured in the app: larger filled markers in the risk color, joined to
+ * the last baseline point by a dashed line.
+ */
+export function measuredDataset(series, added) {
+  const last = series[series.length - 1];
+  const colors = [RISK_COLORS[last.risk], ...added.map((p) => RISK_COLORS[p.risk])];
+  return {
+    label: MEASURED_LABEL,
+    data: [{ x: last.day, y: last.onsd }, ...added.map((p) => ({ x: p.day, y: p.onsd }))],
+    measured: true,
+    pointStyle: 'circle',
+    pointRadius: [0, ...added.map(() => 8)],
+    pointHoverRadius: [0, ...added.map(() => 10)],
+    pointBackgroundColor: colors,
+    pointBorderColor: '#ffffff',
+    pointBorderWidth: 2,
+    backgroundColor: colors[colors.length - 1],
+    borderColor: '#ffffff',
+    borderDash: [3, 4],
+    borderWidth: 1.5,
+    tension: 0,
   };
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildCrewMission, CREW, DEFAULT_CREW_ID } from './lib/crew.js';
+import { addTimelinePoint, resetTimeline, seriesWithAdded, timelineToast } from './lib/crewScan.js';
 import Disclaimer from './components/Disclaimer.jsx';
 import MeasureScreen from './components/MeasureScreen.jsx';
 import Eye3D from './components/Eye3D.jsx';
@@ -15,6 +16,8 @@ import {
   REFERENCES,
   SCIENCE_NOTES,
 } from './config.js';
+
+const NO_POINTS = [];
 
 const TABS = [
   { id: 'trend', label: 'Mission trend' },
@@ -70,6 +73,25 @@ export default function App() {
   const { crew, series, co2 } = useMemo(() => buildCrewMission(crewId), [crewId]);
   const [tab, setTab] = useState('trend');
   const [helpOpen, setHelpOpen] = useState(false);
+  // Points measured in the app and added to a crew member's timeline (kept for this session).
+  const [added, setAdded] = useState({});
+  const [toast, setToast] = useState('');
+  const crewAdded = added[crewId] ?? NO_POINTS;
+  const fullSeries = useMemo(() => seriesWithAdded(series, crewAdded), [series, crewAdded]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const id = setTimeout(() => setToast(''), 5000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const addToTimeline = (onsdMm) => {
+    const res = addTimelinePoint(added, crewId, series, onsdMm);
+    setAdded(res.added);
+    setTab('trend');
+    setToast(timelineToast(res.point, crew.name));
+    requestAnimationFrame(() => document.getElementById('tab-trend')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   return (
     <div className="app">
@@ -102,7 +124,14 @@ export default function App() {
 
       <main>
         {/* The eye is linked to a measurement only when it has a real scale (see eyeViewState). */}
-        <MeasureScreen onResult={setResult} crew={crew} series={series} co2={co2} side={<Eye3D latest={result} />} />
+        <MeasureScreen
+          onResult={setResult}
+          crew={crew}
+          series={fullSeries}
+          co2={co2}
+          side={<Eye3D latest={result} />}
+          onAddToTimeline={addToTimeline}
+        />
 
         <div className="tabs" role="tablist" aria-label="More information">
           {TABS.map((t) => (
@@ -131,7 +160,13 @@ export default function App() {
           <p className="tab-intro">
             Simulated mission data. Dashed lines: 2.3 mmHg (symptoms possible) and 4.0 mmHg (ISS operational limit).
           </p>
-          <TrendChart crew={crew} series={series} co2={co2} />
+          <TrendChart
+            crew={crew}
+            series={series}
+            co2={co2}
+            added={crewAdded}
+            onResetAdded={() => setAdded((a) => resetTimeline(a, crewId))}
+          />
         </div>
 
         {tab === 'science' && (
@@ -190,6 +225,11 @@ export default function App() {
         <p>Logo and eye texture: AI-assisted design (see README).</p>
       </footer>
 
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
       <Disclaimer />
       {helpOpen && <HowItWorks onClose={() => setHelpOpen(false)} />}
     </div>

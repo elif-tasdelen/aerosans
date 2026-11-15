@@ -16,9 +16,10 @@ const CO2_DATASET_INDEX = 3;
  * Simulated mission trend of the selected crew member: ONSD colored by risk with threshold
  * lines, plus cabin CO2 on a second axis as context (no causal link is modeled).
  */
-export default function TrendChart({ crew, series, co2 }) {
-  const data = useMemo(() => trendChartData(series, co2), [series, co2]);
-  const latest = latestPoint(series);
+export default function TrendChart({ crew, series, co2, added = [], onResetAdded }) {
+  const data = useMemo(() => trendChartData(series, co2, added), [series, co2, added]);
+  const latest = latestPoint([...series, ...added]);
+  const lastDay = latest ? Math.max(180, latest.day) : 180;
   const co2Latest = latestCo2(co2);
   const status = co2Latest ? co2Status(co2Latest.co2) : null;
   const weeksAbove = weeksAboveLimit(co2);
@@ -35,7 +36,7 @@ export default function TrendChart({ crew, series, co2 }) {
         x: {
           type: 'linear',
           min: 1,
-          max: 180,
+          max: lastDay,
           title: { display: true, text: 'Mission day', color: TEXT },
           ticks: { color: TEXT, stepSize: 30 },
           grid: { color: GRID },
@@ -59,13 +60,18 @@ export default function TrendChart({ crew, series, co2 }) {
       plugins: {
         legend: { labels: { color: TEXT, usePointStyle: true, boxHeight: 6, font: { size: 11 } } },
         tooltip: {
-          filter: (item) => item.datasetIndex === 0 || item.datasetIndex === CO2_DATASET_INDEX,
+          filter: (item) =>
+            item.datasetIndex === 0 || item.datasetIndex === CO2_DATASET_INDEX || (item.dataset.measured && item.dataIndex > 0),
           callbacks: {
             title: (items) => `Day ${items[0].parsed.x}`,
             label: (item) => {
               if (item.datasetIndex === CO2_DATASET_INDEX) {
                 const c = co2[item.dataIndex];
                 return `Cabin CO₂ (simulated) ${c.co2.toFixed(1)} mmHg — ${co2Status(c.co2).label}`;
+              }
+              if (item.dataset.measured) {
+                const m = added[item.dataIndex - 1];
+                return `Measured in AeroSANS: ${m.onsd.toFixed(2)} mm — ${RISK_LABELS[m.risk]}`;
               }
               const p = series[item.dataIndex];
               return [
@@ -77,7 +83,7 @@ export default function TrendChart({ crew, series, co2 }) {
         },
       },
     }),
-    [series, co2]
+    [series, co2, added, lastDay]
   );
 
   return (
@@ -89,7 +95,9 @@ export default function TrendChart({ crew, series, co2 }) {
         </div>
         {latest && (
           <div className="trend-latest">
-            <span className="label">Latest (day {latest.day})</span>
+            <span className="label">
+              Latest (day {latest.day}){latest.measured ? ' · measured in AeroSANS' : ''}
+            </span>
             <span className={`risk-badge small-badge risk-badge-${latest.risk}`}>
               {latest.onsd.toFixed(2)} mm · {RISK_LABELS[latest.risk]}
             </span>
@@ -106,6 +114,14 @@ export default function TrendChart({ crew, series, co2 }) {
       <p className="small muted">
         Each point is a weekly scan; colors follow the risk signal. The trend over the mission matters more than any single value.
       </p>
+      {added.length > 0 && (
+        <p className="small added-note">
+          {added.length} point{added.length > 1 ? 's' : ''} measured in AeroSANS added to this simulated baseline.{' '}
+          <button className="link-btn" onClick={onResetAdded}>
+            Reset added points
+          </button>
+        </p>
+      )}
 
       {co2Latest && (
         <div className="cabin-box">

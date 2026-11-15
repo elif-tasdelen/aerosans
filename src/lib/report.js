@@ -50,6 +50,9 @@ function describeSource(source) {
   if (source?.kind === 'phantom') {
     return `Synthetic phantom (seed ${source.seed}, ${source.realism}, tilt ${source.tiltDeg}°) — simulated, not a patient image`;
   }
+  if (source?.simulated) {
+    return `Simulated crew scan (code-generated, ground-truth ONSD ${source.groundTruthOnsdMm.toFixed(1)} mm) — not a real patient image`;
+  }
   return 'Uploaded ultrasound image';
 }
 
