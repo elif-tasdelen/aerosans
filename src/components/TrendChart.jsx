@@ -30,7 +30,8 @@ export default function TrendChart({ crew, series, co2, added = [], onResetAdded
       maintainAspectRatio: false,
       locale: 'en-US', // English number format regardless of the browser language
 
-      animation: { duration: 400 },
+      animation: false, // no tween on updates: adding a point or switching tabs must not stall the UI
+      resizeDelay: 150,
       interaction: { mode: 'nearest', intersect: false },
       scales: {
         x: {
@@ -109,7 +110,7 @@ export default function TrendChart({ crew, series, co2, added = [], onResetAdded
         role="img"
         aria-label="Line chart of simulated ONSD over 180 mission days with threshold lines at 5.0 and 5.7 mm, and simulated cabin CO2 on a second axis with reference lines at 2.3 and 4.0 mmHg"
       >
-        <Line data={data} options={options} />
+        <Line data={data} options={options} updateMode="none" />
       </div>
       <p className="small muted">
         Each point is a weekly scan; colors follow the risk signal. The trend over the mission matters more than any single value.

@@ -323,35 +323,69 @@ export const CO2 = {
 /** Short reference list shown in the footer (same sources as README → References). */
 export const REFERENCES = [
   {
-    text: 'Wang L-J, et al. Noninvasive and quantitative intracranial pressure estimation using ultrasonographic measurement of optic nerve sheath diameter. Sci Rep. 2017;7:42063.',
-    url: 'https://doi.org/10.1038/srep42063',
+    text: 'Maissan WA, Dirven PJ, Haitsma IK, Hoeks SE, Gommers D, Stolker RJ. Ultrasonographic measured optic nerve sheath diameter as an accurate and quick monitor for changes in intracranial pressure. J Neurosurg. 2015;123(3):743–747.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/25955869/',
   },
   {
-    text: 'Maissan IM, et al. Ultrasonographic measured optic nerve sheath diameter as an accurate and quick monitor for changes in intracranial pressure. J Neurosurg. 2015;123(3):743-7.',
-    url: 'https://doi.org/10.3171/2014.10.JNS141197',
+    text: 'Maissan WA, Dirven PJ, Haitsma IK, Hoeks SE, Gommers D, Stolker RJ. Response [to: Optic nerve sheath diameter as ICP marker]. J Neurosurg. 2016;124(3):891.',
+    url: 'https://doi.org/10.3171/2015.9.JNS152178',
   },
-  { text: 'Maissan IM, et al. Response [to: Optic nerve sheath diameter as ICP marker]. J Neurosurg. 2016;124(3):891.', url: null },
   {
-    text: 'Soldatos T, et al. Optic nerve sonography in the diagnostic evaluation of adult brain injury. Crit Care. 2008;12(3):R67.',
-    url: 'https://doi.org/10.1186/cc6897',
+    text: 'Soldatos T, Chatzimichail K, Papathanasiou M, Gouliamos A. Optic nerve sonography in the diagnostic evaluation of adult brain injury. Crit Care. 2008;12(3):R67.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/18477382/',
+  },
+  {
+    text: 'Wang L-J, Yao Y, Feng L-S, Wang Y-Z, Zheng N-N, Feng J-C, Xing Y-Q. Noninvasive and quantitative intracranial pressure estimation using ultrasonographic measurement of optic nerve sheath diameter. Sci Rep. 2017;7:42063.',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5294647/',
+  },
+  {
+    text: 'Kim DH, Jun JS, Kim R. Ultrasonographic measurement of the optic nerve sheath diameter and its association with eyeball transverse diameter in 585 healthy volunteers. Sci Rep. 2017;7(1):15906.',
+    url: 'https://doi.org/10.1038/s41598-017-16173-z',
   },
   {
     text: 'Berhanu D, et al. The role of optic nerve sheath ultrasonography in increased intracranial pressure: a systematic review and meta-analysis. J Neurol Sci. 2023;454:120853.',
-    url: 'https://doi.org/10.1016/j.jns.2023.120853',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/37925899/',
   },
   {
-    text: 'NASA OSDR OSD-397 — RNA-seq and RRBS on spaceflight mouse retina (Rodent Research-1).',
+    text: 'Baumgartner P, Zahn M, Handelsmann HL, et al. Optic nerve sheath diameter for prediction of intracranial hypertension after ischemic stroke — the ONSITE study. Eur Stroke J. 2026;11(1):23969873251379985.',
+    url: 'https://doi.org/10.1093/esj/23969873251379985',
+  },
+  {
+    text: 'Bozdoğan Z, Şenel E, Özmuk Ö, Karataş H, Kurşun O. Comparison of optic nerve sheath diameters measured by optic ultrasonography before and after lumbar puncture in idiopathic intracranial hypertension patients. Arch Neuropsychiatry. 2023;60(2):117–123.',
+    url: 'https://doi.org/10.29399/npa.28074',
+  },
+  {
+    text: 'Trollip L, Alberto K, Makgotloe A. Optic nerve sheath diameter: a cross-sectional study of ultrasonographic measurement in healthy Black South African adults. Life (Basel). 2023;13(10):1979.',
+    url: 'https://doi.org/10.3390/life13101979',
+  },
+  {
+    text: 'Alperin N, Bagci AM. Spaceflight-induced visual impairment and globe deformations in astronauts are linked to orbital cerebrospinal fluid volume increase. Acta Neurochir Suppl. 2018;126:215–219.',
+    url: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7585261/',
+  },
+  {
+    text: 'Evans LA. Carbon dioxide as a multisystem threat in long duration spaceflight. Aerosp Med Hum Perform. 2025;96(11):1024–1026.',
+    url: 'https://doi.org/10.3357/AMHP.6716.2025',
+  },
+  {
+    text: 'NASA Open Science Data Repository. OSD-397: Illumina NGS RNA-seq and RRBS sequencing on spaceflight mouse retina [data set]. 2023.',
     url: 'https://osdr.nasa.gov/bio/repo/data/studies/OSD-397',
   },
-  { text: 'NASA HRP — 5 Hazards of Human Spaceflight.', url: 'https://www.nasa.gov/hrp/hazards/' },
-  { text: 'NASA HRP — Risks of Human Spaceflight.', url: 'https://www.nasa.gov/hrp/risks/' },
-  ...CO2.sources,
+  {
+    text: 'NASA Office of the Chief Health and Medical Officer. Carbon dioxide (CO₂). NASA-STD-3001 Technical Brief OCHMO-TB-004 Rev C. 2023.',
+    url: 'https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-004-carbon-dioxide.pdf',
+  },
+  {
+    text: 'NASA Human Research Program. Risk of spaceflight associated neuro-ocular syndrome (SANS). 2023.',
+    url: 'https://humanresearchroadmap.nasa.gov/risks/risk.aspx?i=105',
+  },
+  // Additional CO₂ sources cited in the cabin-environment notes (not duplicated above).
+  ...CO2.sources.filter((s) => !/OCHMO|Evans/.test(s.text)),
 ];
 
 // --- PDF report --------------------------------------------------------------------
 export const REPORT = {
   title: 'AeroSANS — ONSD Risk Report',
-  footer: 'Simulated data where labeled. Not for clinical use.',
+  footer: 'Simulated data where labeled. Not for clinical use. AI was used in this project (see README: AI Usage Declaration).',
   noScale: 'No scale — ONSD in pixels only; risk and ICP not computed',
   generating: 'Generating report…',
   ready: 'Report ready',

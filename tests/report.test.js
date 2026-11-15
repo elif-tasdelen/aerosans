@@ -37,7 +37,9 @@ describe('report model', () => {
     expect(m.filename).toBe('AeroSANS_report_Crew_Member_A_2026-11-14.pdf');
     expect(m.meta).toEqual(['Generated: 2026-11-14 09:05', 'Crew member: Crew Member A (fictional)', 'App version: 0.1.0']);
     expect(m.disclaimer).toBe(DISCLAIMER_TEXT);
-    expect(m.footer).toBe('Simulated data where labeled. Not for clinical use.');
+    expect(m.footer).toBe(
+      'Simulated data where labeled. Not for clinical use. AI was used in this project (see README: AI Usage Declaration).'
+    );
   });
 
   it('contains every section in order for a calibrated measurement', () => {
@@ -93,9 +95,12 @@ describe('report model', () => {
   });
 
   it('never claims that anything is sent, and never calls the method AI', () => {
-    const all = text(model(scaledResult));
+    const { footer, ...body } = model(scaledResult);
+    const all = text(body);
     expect(all).not.toMatch(/transmit|mission control/i);
+    // The measurement is never called AI; the footer only discloses AI use in development.
     expect(all).not.toMatch(/\bAI\b|artificial intelligence/);
+    expect(footer).toMatch(/AI was used in this project/);
   });
 
   it('formats dates and file names, and makes text safe for the PDF fonts', () => {

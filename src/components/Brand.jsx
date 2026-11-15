@@ -8,14 +8,26 @@ export const MARK_SRC = `${BASE}aerosans-mark.png`;
 export function BrandMark({ height = 36 }) {
   const [ok, setOk] = useState(true);
   if (!ok) return null;
-  return <img className="brand-mark" src={MARK_SRC} alt="" height={height} onError={() => setOk(false)} />;
+  return <img
+      className="brand-mark"
+      src={MARK_SRC}
+      alt=""
+      title="AeroSANS logo (AI-generated)"
+      height={height}
+      onError={() => setOk(false)}
+    />;
 }
 
 /** Full team logo for the empty state. Falls back to the name as text if the image file is missing. */
 export function BrandLogo() {
   const [ok, setOk] = useState(true);
   if (!ok) return <div className="brand-logo-text">AeroSANS</div>;
-  return <img className="brand-logo" src={LOGO_SRC} alt="AeroSANS logo" onError={() => setOk(false)} />;
+  return (
+    <figure className="brand-logo-figure">
+      <img className="brand-logo" src={LOGO_SRC} alt="AeroSANS logo (AI-generated)" onError={() => setOk(false)} />
+      <figcaption className="ai-label">Logo: AI-generated (Google Gemini)</figcaption>
+    </figure>
+  );
 }
 
 /** Small (i) button with a short explanation shown on hover, focus or tap. */

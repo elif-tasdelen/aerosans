@@ -780,7 +780,7 @@ a { color: var(--accent); }
 .tab:hover { color: var(--text); }
 .tab.active { background: var(--surface); border-color: var(--border); color: var(--text); box-shadow: inset 0 2px 0 var(--accent); }
 .tab-panel { padding-top: 14px; animation: fade-in 0.18s ease-out; }
-.tab-panel-hidden { height: 0; padding: 0; overflow: hidden; visibility: hidden; animation: none; }
+.tab-panel-hidden { position: absolute; left: -10000px; top: 0; width: 100%; visibility: hidden; pointer-events: none; animation: none; } /* keeps its size so the chart never resizes to 0 */
 .tab-panel .trend-card, .tab-panel .why-card { margin-top: 0; }
 .tab-intro { margin: 0 0 10px; color: var(--muted); font-size: 0.9rem; }
 .science-card { margin-top: 18px; }
@@ -877,3 +877,7 @@ a { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 
 .load-demo { font-size: 0.85rem; padding: 6px 12px; margin-top: 4px; }
+
+/* Visible AI-use label (NASA Space Apps AI disclosure) */
+.brand-logo-figure { margin: 0; display: flex; flex-direction: column; align-items: center; }
+.ai-label { font-size: 0.72rem; color: var(--muted); margin-top: 4px; letter-spacing: 0.02em; }
