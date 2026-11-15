@@ -1,6 +1,8 @@
+import { Info } from './Brand.jsx';
 import {
   ACTIONS,
-  HOW_TO_SCAN,
+  DISCLAIMER_TEXT,
+  EYE_PART_INFO,
   MESSAGES,
   METHOD_LABELS,
   ONSD_BORDERLINE_MM,
@@ -13,6 +15,12 @@ import {
 const fmt = (v, digits = 0) => v.toFixed(digits);
 const CONFIDENCE_TEXT = { high: 'High', medium: 'Medium', low: 'Low' };
 
+/** "What to do now" as a short list: the action for the risk level, then how to read the signal. */
+function actionItems(risk) {
+  const steps = ACTIONS[risk].split(/(?<=\.)\s+/).filter(Boolean);
+  return [...steps, 'Log this scan and compare it with the mission trend.', SCIENCE_NOTES.riskSignal].slice(0, 3);
+}
+
 /** Signed error with 2 decimals; values that round to zero show as "0.00 mm" (no sign). */
 function formatSignedMm(diff) {
   const abs = Math.abs(diff).toFixed(2);
@@ -20,53 +28,35 @@ function formatSignedMm(diff) {
   return `${diff > 0 ? '+' : '−'}${abs} mm`;
 }
 
-function HowToScan({ open = false }) {
-  return (
-    <details className="how-to-scan" open={open}>
-      <summary>How to scan</summary>
-      <ol>
-        {HOW_TO_SCAN.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-    </details>
-  );
-}
-
 /**
  * Result panel. `result` comes from buildResultState (src/lib/result.js).
  * Risk badge, ICP range and "What to do now" appear only when result.showClinical is true
  * (a real scale and no calibration warning).
  */
-export default function ResultCard({ result, onRecalibrate, onConfirmScale, co2 = null, onGenerateReport, reportBusy = false }) {
-  if (!result) {
-    return (
-      <section className="card result-card">
-        <h2>Result</h2>
-        <p className="muted">
-          No measurement yet. Follow the steps on the left to measure the optic nerve sheath
-          diameter (ONSD).
-        </p>
-        <p className="muted small">{SCIENCE_NOTES.riskSignal}</p>
-        <button className="btn btn-primary report-btn" disabled title="Available after a measurement">
-          Generate report (PDF)
-        </button>
-        <HowToScan open />
-      </section>
-    );
-  }
+export default function ResultCard({
+  result,
+  onRecalibrate,
+  onConfirmScale,
+  co2 = null,
+  onGenerateReport,
+  reportBusy = false,
+  onMeasureAgain,
+  onManualEdges = null,
+}) {
+  if (!result) return null;
 
   const { onsdMm, widthPx, method, level, confidence, calibrationLabel, calibrationWarning, showClinical, risk, icp, groundTruthMm } =
     result;
   const hasTruth = typeof groundTruthMm === 'number' && onsdMm != null;
 
   return (
-    <section className={`card result-card ${showClinical ? `risk-${risk}` : 'risk-none'}`}>
-      <h2>Result</h2>
+    <section className={`result-card ${showClinical ? `risk-${risk}` : 'risk-none'}`}>
 
       <div className="result-main">
         <div>
-          <div className="label">ONSD</div>
+          <div className="label">
+            ONSD — optic nerve sheath diameter <Info label="ONSD" text={EYE_PART_INFO.duraSheath.function} />
+          </div>
           <div className="onsd-value">
             {onsdMm != null ? (
               <>
@@ -142,28 +132,38 @@ export default function ResultCard({ result, onRecalibrate, onConfirmScale, co2 
 
       {showClinical && (
         <>
-          <p>{RISK_SUMMARIES[risk]}</p>
+          <p>
+            {RISK_SUMMARIES[risk]} <Info label="SANS risk signal" text={SCIENCE_NOTES.sans} />
+          </p>
           <div className="thresholds small muted">
             Thresholds: normal &lt; {ONSD_BORDERLINE_MM.toFixed(1)} mm · borderline{' '}
             {ONSD_BORDERLINE_MM.toFixed(1)}–{ONSD_HIGH_MM.toFixed(1)} mm · high ≥ {ONSD_HIGH_MM.toFixed(1)} mm
           </div>
-          <p className="thresholds-note small muted">{SCIENCE_NOTES.thresholds}</p>
+          <p className="thresholds-note small muted">
+            Reference points from Earth-based studies <Info label="Thresholds" text={SCIENCE_NOTES.thresholds} />
+          </p>
 
           <div className="icp-box">
-            <div className="label">Estimated ICP range</div>
+            <div className="label">
+              Estimated ICP (intracranial pressure) range <Info label="ICP estimate" text={SCIENCE_NOTES.wang} />
+            </div>
             <div className="icp-range">
               {fmt(icp.mmH2O.low)}–{fmt(icp.mmH2O.high)} mmH₂O
               <span className="muted"> ({fmt(icp.mmHg.low, 1)}–{fmt(icp.mmHg.high, 1)} mmHg)</span>
             </div>
             <p className="small muted">
-              {SCIENCE_NOTES.wang} The range reflects ±{icp.errorMm.toFixed(1)} mm measurement error. It
-              is an estimate, not an exact pressure value.
+              Wang et al. 2017, ±{icp.errorMm.toFixed(1)} mm measurement error. Not validated in microgravity; an
+              estimate, not an exact pressure value.
             </p>
           </div>
 
           <div className={`action-box action-${risk}`}>
             <div className="label">What to do now</div>
-            <p className="action-text">{ACTIONS[risk]}</p>
+            <ul className="action-list">
+              {actionItems(risk).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
           </div>
         </>
       )}
@@ -174,12 +174,26 @@ export default function ResultCard({ result, onRecalibrate, onConfirmScale, co2 
         </p>
       )}
 
-      <button className="btn btn-primary report-btn" onClick={onGenerateReport} disabled={reportBusy}>
-        Generate report (PDF)
-      </button>
+      <div className="row result-actions">
+        <button
+          className="btn btn-primary"
+          onClick={onGenerateReport}
+          disabled={reportBusy}
+          aria-label="Generate report as a PDF file"
+        >
+          Generate report (PDF)
+        </button>
+        <button className="btn" onClick={onMeasureAgain}>
+          Measure again
+        </button>
+        {onManualEdges && (
+          <button className="link-btn" onClick={onManualEdges}>
+            Use manual edges instead
+          </button>
+        )}
+      </div>
 
-      <p className="small muted">{SCIENCE_NOTES.riskSignal}</p>
-      <HowToScan />
+      <p className="small muted result-disclaimer">{DISCLAIMER_TEXT}</p>
     </section>
   );
 }

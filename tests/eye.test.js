@@ -1,9 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { eyeViewState, nerveRadius, sheathColor, sheathRadius } from '../src/lib/eye.js';
-import { buildEye, defaultView, eyeBounds, fitDistance, irisDirection } from '../src/lib/eyeModel.js';
+import {
+  buildEye,
+  defaultView,
+  DURA_COLOR,
+  duraColor,
+  eyeBounds,
+  fitDistance,
+  GLOBE_FILL_RADIUS,
+  irisDirection,
+  NERVE_LENGTH,
+  NERVE_START_X,
+  nerveCentre,
+  setRingNeutral,
+  setSheathRadius,
+} from '../src/lib/eyeModel.js';
 import { buildResultState } from '../src/lib/result.js';
-import { ONSD_BORDERLINE_MM, ONSD_HIGH_MM, PHANTOM_ONSD_MAX_MM, RISK_COLORS } from '../src/config.js';
+import {
+  EYE_DEFAULT_ONSD_MM,
+  EYE_MM_PER_UNIT,
+  EYE_PART_INFO,
+  ONSD_BORDERLINE_MM,
+  ONSD_HIGH_MM,
+  PHANTOM_ONSD_MAX_MM,
+  RISK_COLORS,
+} from '../src/config.js';
 
 describe('3D eye helpers', () => {
   it('sheath radius grows with ONSD and stays wider than the nerve', () => {
@@ -49,6 +71,106 @@ describe('3D eye model orientation and framing', () => {
     }
   });
 
+  describe('layered optic nerve', () => {
+    // Distance of the tube's vertices from the nerve centre line at the measurement ring.
+    const ringRadii = (mesh) => {
+      mesh.updateMatrixWorld(true);
+      const ringX = eye.ring.position.x;
+      const pos = mesh.geometry.attributes.position;
+      const { segments, radial } = mesh.geometry.userData;
+      let best = 0;
+      let bestDx = Infinity;
+      for (let i = 0; i <= segments; i++) {
+        const v = new THREE.Vector3().fromBufferAttribute(pos, i * (radial + 1)).applyMatrix4(mesh.matrixWorld);
+        if (Math.abs(v.x - ringX) < bestDx) {
+          bestDx = Math.abs(v.x - ringX);
+          best = i;
+        }
+      }
+      const radii = [];
+      for (let j = 0; j <= radial; j++) {
+        const v = new THREE.Vector3().fromBufferAttribute(pos, best * (radial + 1) + j).applyMatrix4(mesh.matrixWorld);
+        radii.push(Math.hypot(v.y, v.z));
+      }
+      return radii;
+    };
+
+    it('shows the default ONSD of 5.0 mm when there is no measurement', () => {
+      expect(EYE_DEFAULT_ONSD_MM).toBe(5.0);
+      const fresh = buildEye();
+      expect(fresh.sheath.userData.radius * EYE_MM_PER_UNIT * 2).toBeCloseTo(5.0, 10);
+    });
+
+    it.each([4.0, 5.18, 6.5])('dura outer radius at the ring = ONSD / 2 for %s mm', (onsdMm) => {
+      setSheathRadius(eye, sheathRadius(onsdMm));
+      for (const r of ringRadii(eye.sheath)) expect(r * EYE_MM_PER_UNIT).toBeCloseTo(onsdMm / 2, 2);
+      expect(eye.ring.scale.x).toBeCloseTo(sheathRadius(onsdMm) + 0.02, 10);
+      setSheathRadius(eye, sheathRadius(EYE_DEFAULT_ONSD_MM));
+    });
+
+    it('only the sheath and the fluid layer widen; the nerve keeps its diameter', () => {
+      setSheathRadius(eye, sheathRadius(4.0));
+      const nerve4 = ringRadii(eye.nerve)[0];
+      const csf4 = ringRadii(eye.csf)[0];
+      setSheathRadius(eye, sheathRadius(6.5));
+      const nerve65 = ringRadii(eye.nerve)[0];
+      const csf65 = ringRadii(eye.csf)[0];
+      expect(nerve65).toBeCloseTo(nerve4, 10);
+      expect(nerve4 * EYE_MM_PER_UNIT * 2).toBeCloseTo(3, 1);
+      expect(csf65).toBeGreaterThan(csf4);
+      expect(csf65).toBeGreaterThan(nerve65);
+      expect(csf65).toBeLessThan(sheathRadius(6.5));
+      setSheathRadius(eye, sheathRadius(EYE_DEFAULT_ONSD_MM));
+    });
+
+    it('the ring sits exactly 3 mm behind the globe surface, on the nerve centre line', () => {
+      expect((eye.ring.position.x - 1) * EYE_MM_PER_UNIT).toBeCloseTo(3, 10);
+      const u = (eye.ring.position.x - NERVE_START_X) / NERVE_LENGTH;
+      const c = nerveCentre(u);
+      expect(Math.hypot(c.y, c.z)).toBeLessThan(1e-9);
+    });
+
+    it('the nerve is gently S-shaped further back and about 26 mm long', () => {
+      const ys = [0.4, 0.6, 0.8, 1].map((u) => nerveCentre(u).y);
+      expect(Math.max(...ys)).toBeGreaterThan(0.02);
+      expect(Math.min(...ys)).toBeLessThan(-0.02);
+      expect(NERVE_LENGTH * EYE_MM_PER_UNIT).toBeGreaterThan(24);
+      expect(NERVE_LENGTH * EYE_MM_PER_UNIT).toBeLessThan(28);
+    });
+
+    it('has the artery, the vein and seeded surface vessels as clickable or decorative parts', () => {
+      const parts = eye.pickables.map((m) => m.userData.part);
+      for (const part of ['opticNerve', 'subarachnoidSpace', 'duraSheath', 'centralRetinalArtery', 'centralRetinalVein']) {
+        expect(parts).toContain(part);
+        expect(EYE_PART_INFO[part].name.length).toBeGreaterThan(3);
+        expect(eye.anchors[part]).toBeDefined();
+      }
+      expect(eye.duraVessels.length).toBeGreaterThanOrEqual(5);
+      const again = buildEye();
+      expect(Array.from(again.duraVessels[0].geometry.attributes.position.array)).toEqual(
+        Array.from(eye.duraVessels[0].geometry.attributes.position.array)
+      );
+    });
+
+    it('switches to a grey dashed ring without a scale', () => {
+      setRingNeutral(eye, true);
+      expect(eye.ring.visible).toBe(false);
+      expect(eye.ringDashed.visible).toBe(true);
+      expect(eye.ringDashed.children.length).toBeGreaterThan(8);
+      setRingNeutral(eye, false);
+      expect(eye.ring.visible).toBe(true);
+      expect(eye.ringDashed.visible).toBe(false);
+    });
+
+    it('tints the dura towards the risk color', () => {
+      const base = new THREE.Color(DURA_COLOR);
+      const high = duraColor(RISK_COLORS.high);
+      const normal = duraColor(RISK_COLORS.normal);
+      expect(high.r - high.g).toBeGreaterThan(base.r - base.g);
+      expect(normal.g).toBeGreaterThan(normal.r);
+    });
+  });
+
   it('the optic nerve runs along +X (within 1°), straight from the posterior pole', () => {
     const axis = worldPos(eye.nerve).sub(worldPos(eye.globe)).normalize();
     const angle = THREE.MathUtils.radToDeg(axis.angleTo(new THREE.Vector3(1, 0, 0)));
@@ -87,6 +209,30 @@ describe('3D eye model orientation and framing', () => {
     expect(THREE.MathUtils.radToDeg(nerveDir.angleTo(new THREE.Vector3(1, 0, 0)))).toBeLessThan(2);
     expect(THREE.MathUtils.radToDeg(iris.angleTo(nerveDir))).toBeGreaterThan(178); // same axis, opposite sides
     expect(eye.group.up.y).toBe(1);
+  });
+
+  it('the globe is solid: opaque sclera with a dark inner fill, and only the cornea is see-through', () => {
+    const m = eye.globe.material;
+    expect(m.transparent).toBe(false);
+    expect(m.opacity).toBe(1);
+    expect(m.depthWrite).toBe(true);
+    expect(m.side).toBe(THREE.FrontSide);
+    // The texture orientation is unchanged.
+    expect(eye.globe.rotation.y).toBeCloseTo(Math.PI, 10);
+
+    expect(eye.vitreous).toBeDefined();
+    expect(eye.vitreous.geometry.parameters.radius).toBeCloseTo(GLOBE_FILL_RADIUS, 10);
+    expect(GLOBE_FILL_RADIUS).toBeLessThan(1);
+    expect(eye.vitreous.material.side).toBe(THREE.BackSide);
+    expect(eye.vitreous.material.color.getHexString()).toBe('3a1414');
+    expect(eye.vitreous.material.transparent).toBe(false);
+
+    expect(eye.cornea.material.transmission).toBeGreaterThan(0.8);
+    expect(eye.cornea.material.transparent).toBe(true);
+    // Cornea in front of the iris (−X), lens just behind the corneal dome.
+    expect(worldPos(eye.cornea).x).toBeLessThan(0);
+    expect(worldPos(eye.lens).x).toBeLessThan(-0.9);
+    expect(eye.lens.scale.x).toBeLessThan(eye.lens.scale.y);
   });
 
   it('has no separate iris disc overlapping the textured globe', () => {

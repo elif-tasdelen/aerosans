@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { eyeViewState, sheathColor, sheathRadius } from '../lib/eye.js';
-import { buildEye, defaultView, EYE_TEXTURE_LABEL, EYE_TEXTURE_PATH, eyeBounds } from '../lib/eyeModel.js';
+import {
+  buildEye,
+  defaultView,
+  duraColor,
+  EYE_TEXTURE_LABEL,
+  EYE_TEXTURE_PATH,
+  eyeBounds,
+  setRingNeutral,
+  setSheathRadius,
+} from '../lib/eyeModel.js';
 import {
   EYE_DEFAULT_ONSD_MM,
   EYE_PART_INFO,
@@ -13,7 +22,16 @@ import {
   RISK_LABELS,
 } from '../config.js';
 
-const PART_ORDER = ['globe', 'retina', 'opticNerve', 'sheath'];
+const PART_ORDER = [
+  'globe',
+  'retina',
+  'opticNerve',
+  'subarachnoidSpace',
+  'duraSheath',
+  'centralRetinalArtery',
+  'centralRetinalVein',
+];
+const SHEATH_TRANSITION_MS = 300;
 const CLICK_TOLERANCE_PX = 5;
 const FOV_DEG = 35;
 const SHEATH_EMISSIVE = 0.22; // slight self-glow so the risk color reads clearly
@@ -44,6 +62,7 @@ function tooltipStyle({ x, y }, stage) {
 export default function Eye3D({ latest }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null);
+  const labelRef = useRef(null);
   const latestOnsd = latest?.showClinical ? latest.onsdMm : null;
 
   const [previewOnsd, setPreviewOnsd] = useState(EYE_DEFAULT_ONSD_MM);
@@ -137,10 +156,17 @@ export default function Eye3D({ latest }) {
     applyFitLimits();
     resetView();
 
-    // Animation state.
+    // Animation state: the sheath moves to a new ONSD / color in SHEATH_TRANSITION_MS
+    // (at once with prefers-reduced-motion).
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let currentOnsd = targetRef.current.onsd;
-    const currentColor = new THREE.Color(sheathColor(currentOnsd, { neutral: targetRef.current.neutral }));
+    let currentNeutral = targetRef.current.neutral;
+    const currentColor = new THREE.Color(sheathColor(currentOnsd, { neutral: currentNeutral }));
     const targetColor = new THREE.Color();
+    const fromColor = currentColor.clone();
+    const tintedColor = new THREE.Color();
+    let tween = null; // { fromOnsd, toOnsd, start }
+    const labelPos = new THREE.Vector3();
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let highlighted = null;
@@ -150,11 +176,11 @@ export default function Eye3D({ latest }) {
     let visible = true;
 
     // Sheath: size from ONSD; exact risk color (or neutral grey) with a slight emissive glow.
+    // Only the dura and the fluid layer under it change; the nerve keeps its diameter.
     const applySheath = () => {
-      const r = sheathRadius(currentOnsd);
-      sheath.scale.set(r, 1, r);
-      ring.scale.set(r + 0.02, r + 0.02, 1);
-      sheath.material.color.copy(currentColor);
+      setSheathRadius(eye, sheathRadius(currentOnsd));
+      setRingNeutral(eye, currentNeutral);
+      sheath.material.color.copy(duraColor(currentColor, tintedColor));
       if (highlighted !== sheath) sheath.material.emissive.copy(currentColor).multiplyScalar(SHEATH_EMISSIVE);
     };
     applySheath();
@@ -174,12 +200,8 @@ export default function Eye3D({ latest }) {
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(pickables, false);
       if (!hits.length) return null;
-      // The globe is see-through: a visible part behind it (retina, nerve) wins the click.
+      // The globe is opaque: the first part hit is the one the user sees.
       const first = hits[0];
-      if (first.object.userData.part === 'globe') {
-        const behind = hits.find((h) => h.object.userData.part !== 'globe');
-        if (behind) return behind.object.userData.part;
-      }
       return first.object.userData.part;
     };
 
@@ -249,15 +271,41 @@ export default function Eye3D({ latest }) {
       // Smoothly animate towards the target ONSD and color (exact risk color or neutral grey).
       const { onsd: target, neutral } = targetRef.current;
       targetColor.set(sheathColor(target, { neutral }));
-      const colorDiff =
-        Math.abs(targetColor.r - currentColor.r) + Math.abs(targetColor.g - currentColor.g) + Math.abs(targetColor.b - currentColor.b);
-      if (Math.abs(target - currentOnsd) > 0.0005 || colorDiff > 0.002) {
-        currentOnsd += (target - currentOnsd) * 0.08;
-        currentColor.lerp(targetColor, 0.12);
+      const nowMs = performance.now();
+      const targetChanged = tween ? tween.toOnsd !== target || tween.neutral !== neutral : target !== currentOnsd || neutral !== currentNeutral;
+      if (targetChanged) {
+        tween = { fromOnsd: currentOnsd, toOnsd: target, neutral, start: nowMs };
+        fromColor.copy(currentColor);
+        currentNeutral = neutral;
+      }
+      if (tween) {
+        const t = reduceMotion ? 1 : Math.min(1, (nowMs - tween.start) / SHEATH_TRANSITION_MS);
+        const eased = t * t * (3 - 2 * t);
+        currentOnsd = tween.fromOnsd + (tween.toOnsd - tween.fromOnsd) * eased;
+        currentColor.copy(fromColor).lerp(targetColor, eased);
         applySheath();
+        if (t >= 1) {
+          currentOnsd = tween.toOnsd;
+          tween = null;
+        }
       }
       controls.update();
       renderer.render(scene, camera);
+
+      // Keep the ONSD label next to the measurement ring.
+      const labelEl = labelRef.current;
+      if (labelEl) {
+        ring.getWorldPosition(labelPos);
+        labelPos.y += ring.scale.y + 0.1;
+        labelPos.project(camera);
+        const lw = renderer.domElement.clientWidth;
+        const lh = renderer.domElement.clientHeight;
+        const lx = ((labelPos.x + 1) / 2) * lw;
+        const ly = ((1 - labelPos.y) / 2) * lh;
+        const hidden = labelPos.z > 1 || lx < 0 || lx > lw || ly < 0 || ly > lh;
+        labelEl.style.display = hidden ? 'none' : 'block';
+        labelEl.style.transform = `translate(${lx.toFixed(1)}px, ${ly.toFixed(1)}px) translate(-50%, -100%)`;
+      }
 
       if (!SHOW_FPS) return;
       frames++;
@@ -362,7 +410,7 @@ export default function Eye3D({ latest }) {
               <strong>{info.name}</strong>
               <p>{info.function}</p>
               <p className="muted">{info.status}</p>
-              {selected.part === 'sheath' && (
+              {selected.part === 'duraSheath' && (
                 <p className={`eye-tooltip-status ${sheathStatus.cls}`}>{sheathStatus.text}</p>
               )}
             </div>
@@ -378,6 +426,10 @@ export default function Eye3D({ latest }) {
             <button className="btn btn-ghost small-btn" onClick={() => apiRef.current?.resetView()}>
               Reset view
             </button>
+          </div>
+          <div className={`eye-ring-label ${mode === 'noScale' ? 'no-scale' : ''}`} ref={labelRef} aria-live="polite">
+            <strong>{mode === 'noScale' ? 'ONSD — (no scale)' : `ONSD ${view.onsdMm.toFixed(2)} mm`}</strong>
+            <span>{MEASURE_DEPTH_MM} mm behind globe</span>
           </div>
           {SHOW_FPS && fps != null && <div className="eye-fps">{fps} fps</div>}
           <div className="eye-ai-label">{EYE_TEXTURE_LABEL}</div>
@@ -426,7 +478,8 @@ export default function Eye3D({ latest }) {
             ))}
           </div>
           <p className="small muted">
-            The gold ring marks where ONSD is measured ({MEASURE_DEPTH_MM} mm behind the globe). Drag to
+            The gold ring marks where ONSD is measured ({MEASURE_DEPTH_MM} mm behind the globe). The nerve
+            keeps its size; only the dura sheath and the fluid layer under it widen with ONSD. Drag to
             rotate, scroll to zoom.
           </p>
           <p className="small muted">{EYE_VIEW_NOTE}</p>

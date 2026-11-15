@@ -161,7 +161,7 @@ export const EYE_MM_PER_UNIT = 12;
 /** Optic nerve (without sheath) diameter, shown at a fixed size (mm). */
 export const EYE_NERVE_DIAMETER_MM = 3;
 /** Default ONSD shown before any measurement exists (mm). */
-export const EYE_DEFAULT_ONSD_MM = 4.6;
+export const EYE_DEFAULT_ONSD_MM = 5.0;
 
 // --- Texts (from BIO) -----------------------------------------------------------
 /**
@@ -230,20 +230,38 @@ export const EYE_PART_INFO = {
     name: 'Retina',
     function:
       'Light-sensitive tissue lining the back of the eye. The optic disc, where the nerve leaves the eye, can swell (optic disc edema) in some SANS cases.',
-    status: 'Not measured by AeroSANS. The retina is assessed with other imaging methods.',
+    status: 'Inside the globe, so it is not visible in this outside view. Not measured by AeroSANS; the retina is assessed with other imaging methods.',
   },
   opticNerve: {
     name: 'Optic nerve',
     function:
-      'Carries visual signals from the retina to the brain. It leaves the back of the globe slightly toward the nose.',
-    status: 'Shown at a fixed size.',
+      'Carries visual signals from the retina to the brain. In the orbit it lies slack in a gentle S shape, which leaves room for eye movements.',
+    status: 'Shown at a fixed diameter: only the sheath around it changes with ONSD.',
   },
-  sheath: {
-    name: 'Optic nerve sheath',
+  subarachnoidSpace: {
+    name: 'Subarachnoid space',
     function:
-      'A fluid-filled sleeve of dura mater and cerebrospinal fluid around the optic nerve. Its diameter (ONSD) can widen when intracranial pressure rises.',
+      'A thin layer of cerebrospinal fluid between the optic nerve and the dura sheath. It is connected to the fluid space around the brain, so pressure changes there can reach the back of the eye.',
+    status: 'Shown as the pale blue layer. It widens together with the dura sheath in this model.',
+  },
+  duraSheath: {
+    name: 'Dura sheath',
+    function:
+      'The outer covering of the optic nerve. When pressure in the cerebrospinal fluid rises, this sheath widens; that width is the optic nerve sheath diameter (ONSD).',
     status:
-      'Measured by AeroSANS 3 mm behind the globe. The color shows the current risk signal, not a diagnosis.',
+      'Measured by AeroSANS 3 mm behind the globe (gold ring). The tint shows the current risk signal, not a diagnosis.',
+  },
+  centralRetinalArtery: {
+    name: 'Central retinal artery',
+    function:
+      'Carries blood to the inner retina. It enters the optic nerve about 10 mm behind the globe and runs inside it to the optic disc.',
+    status: 'Illustrative only. Not measured by AeroSANS.',
+  },
+  centralRetinalVein: {
+    name: 'Central retinal vein',
+    function:
+      'Drains blood from the retina. It leaves the eye through the optic disc and runs inside the optic nerve next to the artery.',
+    status: 'Illustrative only. Not measured by AeroSANS.',
   },
 };
 

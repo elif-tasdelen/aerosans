@@ -24,7 +24,6 @@ import {
   AXIS_MIN_DISTANCE_MM,
   AXIS_MIN_DISTANCE_PX,
   CALIBRATION_LABELS,
-  HOW_TO_SCAN,
   MEASURE_DEPTH_MM,
   MEASURE_MARKER_COLOR,
   MESSAGES,
@@ -32,9 +31,11 @@ import {
   PHANTOM_ONSD_MAX_MM,
   PHANTOM_ONSD_MIN_MM,
   REPORT,
+  RISK_LABELS,
 } from '../config.js';
 import pkg from '../../package.json';
 import ResultCard from './ResultCard.jsx';
+import { BrandLogo } from './Brand.jsx';
 import { renderReportPdf } from './reportPdf.js';
 
 const MAX_UPLOAD_WIDTH = 900;
@@ -64,6 +65,12 @@ const CAL_MODES = [
     hint: 'Enter the depth shown on the scanner, then click the top of the image field (skin line) and the bottom (depth marker).',
   },
   { id: 'none', label: 'No scale available', hint: 'Measure in pixels only. No mm value, risk signal or ICP.' },
+];
+
+const FLOW_STEPS = [
+  { id: 1, title: 'Load scan' },
+  { id: 2, title: 'Measure' },
+  { id: 3, title: 'Result' },
 ];
 
 const STEPS = [
@@ -167,7 +174,7 @@ function drawEdgeMarker(ctx, p, u, color) {
   ctx.fill();
 }
 
-export default function MeasureScreen({ onResult, crew, series = [], co2 = [] }) {
+export default function MeasureScreen({ onResult, crew, series = [], co2 = [], side = null }) {
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
   const dragRef = useRef(null); // 'left' | 'right' | null
@@ -195,7 +202,7 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
   const [measurement, setMeasurement] = useState(null);
   const [manualPts, setManualPts] = useState([]);
   const [proposal, setProposal] = useState(null); // auto-detect result waiting for Accept / Re-pick
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [viewStep, setViewStep] = useState(null); // earlier step opened from the stepper, or null
   const [notice, setNotice] = useState('');
 
   const scaled = calibration?.mode === 'scaleBar' || calibration?.mode === 'depth';
@@ -249,6 +256,10 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
   // --- State transitions -------------------------------------------------------------
 
   useEffect(() => () => clearTimeout(scanTimerRef.current), []);
+
+  // A new image, calibration or result always shows its own step again.
+  const flowKey = `${source ? source.kind + (source.seed ?? source.name ?? '') : 'none'}|${Boolean(calibration)}|${measurement?.leftOffset != null}`;
+  useEffect(() => setViewStep(null), [flowKey]);
 
   const clearMeasurement = () => {
     clearTimeout(scanTimerRef.current);
@@ -724,173 +735,252 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
   const showCalibChoice = source?.kind === 'upload' && step === 2;
   const calibReady = calibPts.length === 2;
 
-  return (
-    <div className="measure-layout">
-      <section className="card measure-card">
-        <div className="measure-header">
-          <h2 className="title-with-help">
-            ONSD measurement
-            <button
-              className="help-btn"
-              onClick={() => setHelpOpen((o) => !o)}
-              aria-expanded={helpOpen}
-              aria-controls="how-to-scan-help"
-              title="How to scan"
-            >
-              ?
-            </button>
-          </h2>
-          <button className="btn btn-ghost" onClick={reset} disabled={!source}>
-            Reset
+  // --- Three-step flow: ① Load scan → ② Measure → ③ Result ---------------------------------
+  // `step` (1–5) is the detailed internal state; the stepper shows three steps. The user can open
+  // an earlier step again without losing the current measurement.
+  const uiStep = hasEdges ? 3 : calibration ? 2 : 1;
+  const shown = Math.min(viewStep ?? uiStep, uiStep);
+  const measureAgain = () => {
+    clearMeasurement();
+    setNotice(MESSAGES.clickGlobe);
+  };
+  const instruction = notice || STEPS[step - 1].text;
+
+  const loadButtons = (primaryDemo) => (
+    <div className="row load-actions">
+      <button
+        className={`btn ${primaryDemo ? 'btn-primary' : ''}`}
+        onClick={() => handleGenerate()}
+        aria-label="Use the demo phantom: generate a synthetic ultrasound image"
+      >
+        Use demo phantom
+      </button>
+      <label className="btn" htmlFor="file-input" tabIndex={0} aria-label="Upload an ultrasound image">
+        Upload image
+      </label>
+    </div>
+  );
+
+  const phantomOptions = (
+    <details className="advanced-phantom">
+      <summary>Demo phantom options</summary>
+      <label htmlFor="onsd-slider">
+        Phantom ONSD: <strong>{phantomOnsd.toFixed(1)} mm</strong>
+      </label>
+      <input
+        id="onsd-slider"
+        type="range"
+        min={PHANTOM_ONSD_MIN_MM}
+        max={PHANTOM_ONSD_MAX_MM}
+        step="0.1"
+        value={phantomOnsd}
+        onChange={(e) => setPhantomOnsd(parseFloat(e.target.value))}
+      />
+      <label htmlFor="tilt-slider">
+        Nerve tilt: <strong>{tiltDeg > 0 ? '+' : ''}{tiltDeg}°</strong>
+      </label>
+      <input
+        id="tilt-slider"
+        type="range"
+        min="-30"
+        max="30"
+        step="1"
+        value={tiltDeg}
+        onChange={(e) => setTiltDeg(parseInt(e.target.value, 10))}
+      />
+      <div className="segmented" role="radiogroup" aria-label="Phantom realism">
+        {['clean', 'realistic'].map((r) => (
+          <button
+            key={r}
+            role="radio"
+            aria-checked={realism === r}
+            className={`btn btn-ghost ${realism === r ? 'active' : ''}`}
+            onClick={() => setRealism(r)}
+          >
+            {r === 'clean' ? 'Clean' : 'Realistic'}
           </button>
-        </div>
+        ))}
+        <button className="btn btn-ghost" onClick={handleNewSeed} title="New random speckle pattern">
+          New seed
+        </button>
+      </div>
+    </details>
+  );
 
-        {helpOpen && (
-          <div id="how-to-scan-help" className="help-panel" role="region" aria-label="How to scan">
-            <div className="help-panel-head">
-              <strong>How to scan</strong>
-              <button className="eye-tooltip-close" onClick={() => setHelpOpen(false)} aria-label="Close">
-                ×
+  return (
+    <div className="flow">
+      <input id="file-input" ref={fileRef} type="file" accept="image/*" onChange={handleUpload} hidden />
+
+      <ol className="stepper" aria-label="Measurement steps">
+        {FLOW_STEPS.map((s) => {
+          const state = s.id === shown ? 'active' : s.id < uiStep || (s.id === uiStep && s.id !== shown) ? 'done' : '';
+          const reachable = s.id <= uiStep;
+          return (
+            <li key={s.id} className={`stepper-item ${state} ${s.id <= uiStep ? 'reached' : ''}`}>
+              <button
+                className="stepper-btn"
+                onClick={() => setViewStep(s.id)}
+                disabled={!reachable}
+                aria-current={s.id === shown ? 'step' : undefined}
+                aria-label={`Step ${s.id}: ${s.title}`}
+              >
+                <span className="stepper-num">{s.id < uiStep ? '✓' : s.id}</span>
+                <span className="stepper-title">{s.title}</span>
               </button>
-            </div>
-            <ol>
-              {HOW_TO_SCAN.map((s) => (
-                <li key={s}>{s}</li>
-              ))}
-            </ol>
-          </div>
-        )}
-
-        <ol className="steps">
-          {STEPS.map((s) => (
-            <li key={s.id} className={s.id === step ? 'active' : s.id < step ? 'done' : ''}>
-              <span className="step-num">{s.id < step ? '✓' : s.id}</span>
-              <div>
-                <strong>{s.title}</strong>
-                {s.id === step && <div className="step-text">{s.text}</div>}
-              </div>
             </li>
-          ))}
-        </ol>
+          );
+        })}
+      </ol>
 
-        <div className="controls">
-          <div className="control-group">
-            <label className="btn" htmlFor="file-input">
-              Upload ultrasound image
-            </label>
-            <input id="file-input" ref={fileRef} type="file" accept="image/*" onChange={handleUpload} hidden />
-            <span className="muted small">Only use images you have the right to use.</span>
-          </div>
-
-          <div className="control-group phantom-group">
-            <label htmlFor="onsd-slider">
-              Phantom ONSD: <strong>{phantomOnsd.toFixed(1)} mm</strong>
-            </label>
-            <input
-              id="onsd-slider"
-              type="range"
-              min={PHANTOM_ONSD_MIN_MM}
-              max={PHANTOM_ONSD_MAX_MM}
-              step="0.1"
-              value={phantomOnsd}
-              onChange={(e) => setPhantomOnsd(parseFloat(e.target.value))}
-            />
-            <details className="advanced-phantom">
-              <summary>Advanced phantom</summary>
-              <label htmlFor="tilt-slider">
-                Nerve tilt: <strong>{tiltDeg > 0 ? '+' : ''}{tiltDeg}°</strong>
-              </label>
-              <input
-                id="tilt-slider"
-                type="range"
-                min="-30"
-                max="30"
-                step="1"
-                value={tiltDeg}
-                onChange={(e) => setTiltDeg(parseInt(e.target.value, 10))}
-              />
-              <div className="segmented" role="radiogroup" aria-label="Phantom realism">
-                {['clean', 'realistic'].map((r) => (
-                  <button
-                    key={r}
-                    role="radio"
-                    aria-checked={realism === r}
-                    className={`btn btn-ghost ${realism === r ? 'active' : ''}`}
-                    onClick={() => setRealism(r)}
-                  >
-                    {r === 'clean' ? 'Clean' : 'Realistic'}
-                  </button>
-                ))}
-              </div>
-            </details>
-            <div className="row">
-              <button className="btn btn-primary" onClick={() => handleGenerate()}>
-                Generate synthetic phantom
-              </button>
-              <button className="btn btn-ghost" onClick={handleNewSeed} title="New random speckle pattern">
-                New seed
-              </button>
+      <div className="flow-grid">
+        <section className="card step-card" key={shown} aria-live="polite">
+          {/* ① Load scan */}
+          {shown === 1 && !source && (
+            <div className="empty-state">
+              <BrandLogo />
+              <p className="empty-lead">
+                No scan yet — try the demo phantom. AeroSANS measures the optic nerve sheath diameter (ONSD) on an
+                eye ultrasound image and turns it into a risk signal for spaceflight-associated neuro-ocular
+                syndrome (SANS).
+              </p>
+              {loadButtons(true)}
+              <p className="muted small">Only upload images you have the right to use. Images stay in this browser.</p>
+              {phantomOptions}
             </div>
-          </div>
-        </div>
-
-        {showCalibChoice && (
-          <div className="calib-panel">
-            <div className="segmented" role="radiogroup" aria-label="Calibration mode">
-              {CAL_MODES.map((m) => (
-                <button
-                  key={m.id}
-                  role="radio"
-                  aria-checked={calMode === m.id}
-                  className={`btn btn-ghost ${calMode === m.id ? 'active' : ''}`}
-                  onClick={() => chooseCalMode(m.id)}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-            {calMode === 'scaleBar' && (
-              <div className="calib-box">
-                <span>Points: {calibPts.length}/2 · Length:</span>
-                <input
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  value={calibMm}
-                  onChange={(e) => setCalibMm(e.target.value)}
-                  aria-label="Scale bar length in mm"
-                />
-                <span>mm</span>
-                <button className="btn btn-primary" disabled={!calibReady} onClick={confirmCalibration}>
-                  Confirm calibration
-                </button>
-              </div>
-            )}
-            {calMode === 'depth' && (
-              <div className="calib-box">
-                <span>Depth on screen:</span>
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.1"
-                  value={depthCm}
-                  onChange={(e) => setDepthCm(e.target.value)}
-                  aria-label="Image depth in cm"
-                />
-                <span>cm · Points: {calibPts.length}/2</span>
-                <button className="btn btn-primary" disabled={!calibReady} onClick={confirmCalibration}>
-                  Confirm calibration
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {source && <div className="notice">{notice || STEPS[step - 1].text}</div>}
-
-        <div className="canvas-wrap">
-          {source ? (
+          )}
+          {shown === 1 && source && (
             <>
+              <h2>Load a scan</h2>
+              {loadButtons(!calibration && source.kind !== 'upload')}
+              {phantomOptions}
+              {source.kind === 'upload' && !calibration && (
+                <div className="calib-panel">
+                  <p className="step-instruction">Choose how to set the scale of this image.</p>
+                  <div className="calib-cards" role="radiogroup" aria-label="Calibration mode">
+                    {CAL_MODES.map((m) => (
+                      <button
+                        key={m.id}
+                        role="radio"
+                        aria-checked={calMode === m.id}
+                        className={`calib-card ${calMode === m.id ? 'active' : ''}`}
+                        onClick={() => chooseCalMode(m.id)}
+                      >
+                        <strong>{m.label}</strong>
+                        <span>{m.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {calMode === 'scaleBar' && (
+                    <div className="calib-box">
+                      <span>Points: {calibPts.length}/2 · Length:</span>
+                      <input
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={calibMm}
+                        onChange={(e) => setCalibMm(e.target.value)}
+                        aria-label="Scale bar length in mm"
+                      />
+                      <span>mm</span>
+                      <button className="btn btn-primary" disabled={!calibReady} onClick={confirmCalibration}>
+                        Confirm calibration
+                      </button>
+                    </div>
+                  )}
+                  {calMode === 'depth' && (
+                    <div className="calib-box">
+                      <span>Depth on screen:</span>
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.1"
+                        value={depthCm}
+                        onChange={(e) => setDepthCm(e.target.value)}
+                        aria-label="Image depth in cm"
+                      />
+                      <span>cm · Points: {calibPts.length}/2</span>
+                      <button className="btn btn-primary" disabled={!calibReady} onClick={confirmCalibration}>
+                        Confirm calibration
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {calibration && (
+                <p className="small muted">
+                  Scale: {calibration.auto ? CALIBRATION_LABELS.phantom : CALIBRATION_LABELS[calibration.mode]}.{' '}
+                  {source.kind === 'upload' && (
+                    <button
+                      className="link-btn"
+                      onClick={() => {
+                        clearMeasurement();
+                        clearCalibration();
+                      }}
+                    >
+                      Change calibration
+                    </button>
+                  )}
+                </p>
+              )}
+            </>
+          )}
+
+          {/* ② Measure */}
+          {shown === 2 && (
+            <>
+              <h2>Measure the sheath</h2>
+              <p className={`step-instruction ${proposal?.fromAutoMeasure ? 'uncertain' : ''}`}>{instruction}</p>
+              {proposal ? (
+                <div className="row">
+                  <button
+                    className="btn btn-primary"
+                    onClick={acceptProposal}
+                    disabled={!proposal.globePoint || (proposal.level === 'low' && !proposal.fromAutoMeasure)}
+                  >
+                    Confirm
+                  </button>
+                  <button className="btn" onClick={repickManually}>
+                    Measure manually
+                  </button>
+                </div>
+              ) : (
+                <div className="row">
+                  <button
+                    className="btn btn-primary"
+                    onClick={runAutoMeasure}
+                    disabled={!scaled || scanning}
+                    aria-label="Auto-Measure: find the globe, the nerve axis and the sheath edges"
+                    title={
+                      scaled
+                        ? 'Finds the globe, the nerve axis and the sheath edges in one step (classical image processing)'
+                        : 'Without a scale, mark the points manually on the image'
+                    }
+                  >
+                    {scanning ? 'Measuring…' : 'Auto-Measure'}
+                  </button>
+                  <button className="btn" onClick={measureAgain} disabled={scanning}>
+                    Measure manually
+                  </button>
+                  {clicks.length > 0 && (
+                    <button className="link-btn" onClick={measureAgain}>
+                      Re-pick points
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ③ Result: heading only; the result card follows the image */}
+          {shown === 3 && (
+            <>
+              <h2>Review the result</h2>
+              <p className="step-instruction">{instruction}</p>
+            </>
+          )}
+
+          {source && (
+            <div className="canvas-wrap">
               <canvas
                 ref={canvasRef}
                 className="measure-canvas clickable"
@@ -905,107 +995,54 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
                 </div>
               )}
               {clickHint && <div className="canvas-hint">{clickHint}</div>}
-            </>
-          ) : (
-            <div className="canvas-empty">
-              <p>No image loaded.</p>
-              <p className="muted small">Generate a synthetic phantom to try the full flow.</p>
             </div>
           )}
-        </div>
+          {source?.kind === 'upload' && <p className="small muted real-note">{MESSAGES.realImageNote}</p>}
+          {source?.kind === 'phantom' && (
+            <p className="small muted">
+              Simulated data — synthetic phantom (seed {source.seed}, {source.realism}, tilt {source.tiltDeg}°).
+            </p>
+          )}
 
-        {proposal && (
-          <div className="proposal-box">
-            {proposal.fromAutoMeasure ? (
-              <span>Proposed globe point and nerve axis (uncertain)</span>
-            ) : (
-              <span>
-                Auto-detected (confidence: <strong>{proposal.level}</strong>
-                {proposal.globePoint ? `, ${Math.round(proposal.confidence * 100)}%` : ''})
-              </span>
-            )}
-            <button
-              className="btn btn-primary"
-              onClick={acceptProposal}
-              disabled={!proposal.globePoint || (proposal.level === 'low' && !proposal.fromAutoMeasure)}
-            >
-              {proposal.fromAutoMeasure ? 'Confirm' : 'Accept'}
-            </button>
-            <button className="btn btn-ghost" onClick={repickManually}>
-              {proposal.fromAutoMeasure ? 'Measure manually' : 'Re-pick manually'}
-            </button>
-          </div>
-        )}
-
-        <div className="row">
-          {source && (
-            <button
-              className="btn btn-primary"
-              onClick={runAutoMeasure}
-              disabled={!scaled || scanning}
-              title={
-                scaled
-                  ? 'Finds the globe, the nerve axis and the sheath edges in one step (classical image processing)'
-                  : 'Calibrate the image with a scale bar or the image depth first'
-              }
-            >
-              {scanning ? 'Measuring…' : 'Auto-Measure'}
-            </button>
-          )}
-          {step === 3 && !proposal && (
-            <button className="btn btn-ghost" onClick={runAutodetect} title="Proposes the globe point and nerve axis">
-              Auto-detect globe &amp; nerve <span className="beta-tag">beta</span>
-            </button>
-          )}
-          {step === 3 && source?.kind === 'phantom' && (
-            <button className="btn btn-ghost" onClick={autoPick}>
-              Auto-pick axis (phantom)
-            </button>
-          )}
-          {measurement?.method !== 'manual' && hasEdges && (
-            <button className="btn btn-ghost" onClick={switchToManual}>
-              Use manual edges instead
-            </button>
-          )}
-          {clicks.length > 0 && (
-            <button className="btn btn-ghost" onClick={clearMeasurement}>
-              Re-pick axis points
-            </button>
-          )}
-          {calibration && source?.kind === 'upload' && (
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
+          {shown === 3 && result && (
+            <ResultCard
+              result={result}
+              onRecalibrate={() => {
                 clearMeasurement();
                 clearCalibration();
+                setNotice('Choose a calibration mode and use a known scale (ruler, scale bar or image depth).');
               }}
-            >
-              Change calibration
-            </button>
+              onConfirmScale={() => setCalibration((c) => ({ ...c, confirmedIndependent: true }))}
+              co2={co2Latest ? { value: co2Latest.co2, status: co2Status(co2Latest.co2) } : null}
+              onGenerateReport={generateReport}
+              reportBusy={reportState !== 'idle'}
+              onMeasureAgain={measureAgain}
+              onManualEdges={measurement?.method !== 'manual' ? switchToManual : null}
+            />
           )}
-        </div>
-        {source?.kind === 'upload' && (
-          <p className="small muted real-note">{MESSAGES.realImageNote}</p>
-        )}
-        {source?.kind === 'phantom' && (
-          <p className="small muted">
-            Simulated data — synthetic phantom (seed {source.seed}, {source.realism}, tilt {source.tiltDeg}°).
-          </p>
-        )}
-      </section>
+        </section>
 
-      <ResultCard
-        result={result}
-        onRecalibrate={() => {
-          clearMeasurement();
-          clearCalibration();
-          setNotice('Choose a calibration mode and use a known scale (ruler, scale bar or image depth).');
-        }}
-        onConfirmScale={() => setCalibration((c) => ({ ...c, confirmedIndependent: true }))}
-        co2={co2Latest ? { value: co2Latest.co2, status: co2Status(co2Latest.co2) } : null}
-        onGenerateReport={generateReport}
-        reportBusy={reportState !== 'idle'}
-      />
+        <aside className="flow-side">
+          {side}
+          <section className={`card summary-card ${result?.showClinical ? `risk-${result.risk}` : ''}`} aria-label="Result summary">
+            <div className="label">Latest result</div>
+            {result ? (
+              <div className="summary-row">
+                <span className="summary-value">
+                  {result.onsdMm != null ? `${result.onsdMm.toFixed(2)} mm` : `${result.widthPx.toFixed(1)} px`}
+                </span>
+                {result.showClinical ? (
+                  <span className={`risk-badge small-badge risk-badge-${result.risk}`}>{RISK_LABELS[result.risk]}</span>
+                ) : (
+                  <span className="risk-badge small-badge risk-badge-none">No risk signal</span>
+                )}
+              </div>
+            ) : (
+              <p className="muted small">No measurement yet. Load a scan and measure to see the result here.</p>
+            )}
+          </section>
+        </aside>
+      </div>
 
       {reportState !== 'idle' && (
         <div className="report-overlay" role="status" aria-live="polite">

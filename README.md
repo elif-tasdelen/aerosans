@@ -22,7 +22,10 @@ Astronauts on Space Missions"*
 
 ## Features
 
-- Upload an ultrasound image or generate a deterministic **synthetic phantom** (ONSD 4.0–7.0 mm).
+- **Three-step flow:** ① Load scan → ② Measure → ③ Result, shown as a stepper with one primary action
+  per step ("Use demo phantom", "Auto-Measure", "Generate report (PDF)"). Finished steps can be opened
+  again without losing the measurement. The 3D eye and a result summary stay next to the active step.
+- Upload an ultrasound image or use the deterministic **synthetic demo phantom** (ONSD 4.0–7.0 mm).
 - **Three calibration modes:**
   - *Scale bar* — click both ends of a ruler or scale bar and enter its length. Segments shorter than
     30 px are rejected, and a warning appears if the calibration segment sits on the measured sheath itself.
@@ -32,35 +35,38 @@ Astronauts on Space Missions"*
 - **Nerve-axis support:** two clicks (posterior globe boundary, then a point further down the nerve)
   define the axis, so tilted nerves are measured perpendicular to their own direction. The globe click
   snaps to the nearby vitreous–retina boundary.
-- **Robust edge detection:** a profile across the nerve 3 mm behind the globe, averaged over a ±0.5 mm
-  strip with bilinear sampling and Gaussian smoothing. Each edge is the 50 % point between the dark band
-  and the bright dura on that side (inner edge of the dura).
+- **Robust edge detection:** a profile across the nerve 3 mm behind the globe, averaged over a ±1 mm
+  strip with bilinear sampling and Gaussian smoothing. Each edge lies between the dark band and the
+  bright dura on that side, at 65 % of the way from the band minimum to the wall peak.
 - **Detection confidence** (high / medium / low) from contrast, symmetry and a plausible width. Low
   confidence switches to manual mode automatically.
 - **Draggable edges:** fine-tune either edge along the measurement line; the result is labelled
-  "auto", "auto (adjusted)" or "manual".
+  "Auto-Measure", "Auto-Measure (adjusted)" or "Manual".
 - **Realistic phantom option:** nerve tilt (−30° to +30°) and a "realistic" mode with grainier speckle,
   blooming sheath walls, lower contrast, bright retrobulbar fat and an optic disc bump.
-- **Auto-detect globe & nerve (beta)** for uploaded images, with confidence and manual override: it
-  proposes the posterior globe point and the nerve axis (globe circle fit + nerve-band line fit), and
-  the user accepts or re-picks them.
 - **Auto-Measure (one click):** on a calibrated image, a short scan animation runs and the app finds
-  the globe, the nerve axis and the sheath edges in one step (classical image processing: circle fit,
-  line fit and an edge profile). The result is labelled "auto-measure". If any step has low confidence
-  it stops and falls back to the manual flow. The animation is skipped with `prefers-reduced-motion`.
+  the globe, the nerve axis and the sheath edges in one step (classical image processing: annotation
+  clean-up, scan-area mask, circle fit, line fit and an edge profile). The animation is skipped with
+  `prefers-reduced-motion`.
+- **Proposal mode on real images:** when detection is uncertain, no result is shown. The detected globe
+  point and nerve axis are drawn as a proposal with "Confirm" and "Measure manually". Uploaded images
+  carry the note "Real ultrasound: please verify the edges before using the result."
 - **Local validation harness** (`npm run validate`, see `validation/README.md`) to compare automatic
   measurements with expert measurements on openly licensed images that are kept out of the repository.
-- Result card: ONSD, method, confidence, calibration mode, colour-coded risk badge, ICP range (mmH₂O and
-  mmHg), Wang 2017 limitation note, "What to do now" action and "How to scan" instructions. Risk, ICP
-  and actions appear only with a real scale. Phantoms show ground truth vs measured error.
-- 3D eye (Three.js, procedural geometry, no external models): side view with the optic nerve running
-  horizontally; the sheath widens with ONSD and uses the risk colors (green / amber / red, grey without
-  a scale). A gold ring with a dark outline marks the measurement position 3 mm behind the globe. The globe uses an eye texture (AI-generated, edited; labeled in the view) with the iris on
-  the optic axis opposite the nerve, a transparent cornea and a soft rim light. Parts are clickable
-  and explain their function and status.
+- Result step: ONSD, colour-coded risk badge, method, confidence, calibration mode, ICP range (mmH₂O and
+  mmHg) with the Wang 2017 limitation, and a short "What to do now" list. Risk, ICP and actions appear
+  only with a real scale. Phantoms show ground truth vs measured error. Small (i) buttons explain
+  ONSD, ICP, SANS and the thresholds.
+- 3D eye (Three.js, procedural geometry, no external models): a solid, opaque globe with an eye texture
+  (AI-generated, edited; labeled in the view) and a clear cornea, and a layered optic nerve — nerve
+  tissue, a thin fluid layer and the dura sheath — in a gentle S shape with small vessels. Only the
+  sheath widens with ONSD; it is tinted with the risk color (grey without a scale). A gold ring with a
+  dark outline and an ONSD label mark the measurement position 3 mm behind the globe. Parts are
+  clickable and explain their function and status.
 - **Crew roster (simulated mission):** a dropdown in the header switches between the fictional
   Crew Member A, B and C. Each has its own deterministic simulated ONSD and cabin CO₂ series; the trend
   chart, the cabin environment box and the report follow the selection.
+- **Two tabs below the flow:** "Mission trend" and "Science & data".
 - **Mission trend chart** (Chart.js): 180 days of simulated ONSD for the selected crew member, points
   and segments colored by risk, dashed threshold lines at 5.0 and 5.7 mm.
 - **Cabin CO₂ context (simulated, with NASA sources):** simulated cabin CO₂ on a second axis of the trend
@@ -70,9 +76,10 @@ Astronauts on Space Missions"*
 - **PDF report:** "Generate report (PDF)" in the result card downloads a 1–2 page A4 report (measurement,
   risk signal, ICP range, action, mission trend, cabin environment, annotated image, limitations and
   references). The file is created in the browser; nothing is sent anywhere.
-- **"How to scan" help:** a "?" button next to the measurement title opens the scanning steps.
-- **"Why the eye?" card:** SANS background, NASA OSDR OSD-397 mouse-retina genes and the volcano plot.
-- Footer with the limitations and a short reference list.
+- **"How it works" (?)** in the top bar: the four steps of the idea and the scanning instructions.
+- **"Science & data" tab:** "Why the eye?" (SANS background, NASA OSDR OSD-397 mouse-retina genes and the
+  volcano plot), threshold and ICP sources, cabin CO₂ notes, limitations and references.
+- A thin disclaimer strip stays at the bottom of every page.
 
 ## How to run
 
@@ -106,18 +113,20 @@ Cabin CO₂ values are simulated and shown as context only; no causal relationsh
 
 Portions of the source code were generated with AI assistance (Claude Code, Anthropic) and reviewed by
 the team. Scientific thresholds and texts are provided and reviewed by the team's biomedical
-engineering member. The phantom ultrasound images and the favicon are rendered by AI-assisted code (no
+engineering member. The phantom ultrasound images are rendered by AI-assisted code (no
 image-generation models are used for them). Phantom images carry a visible "SYNTHETIC PHANTOM" watermark.
 
 The eye texture of the 3D model was generated with Google Gemini, edited by the team, and is labeled as AI-generated in the app.
 
-AI-assisted files: all files in src/ and tests/, index.html, vite.config.js, public/favicon.svg. The disclosure is also recorded in package.json (description and keywords).
+3D optic nerve, sheath and vessel geometry are procedurally generated in code (no AI-generated images). The team logo was designed by the team with AI assistance.
+
+AI-assisted files: all files in `src/` (including `src/lib/preprocess.js`, `src/lib/autodetect.js`, `src/lib/measure.js`, `src/lib/autoMeasure.js`, `src/lib/eyeModel.js`, `src/components/*` and `src/styles.css`) and `tests/` (including `tests/helpers/`), `index.html`, `vite.config.js`, `.github/workflows/deploy.yml`, `validation/` (`run.mjs`, `phantomSweep.mjs`, `README.md`, `manifest.example.json`) and the logo files in `public/`. The disclosure is also recorded in package.json (description and keywords).
 
 ## Data & Assets
 
 - **Synthetic phantom images** are generated at runtime by `src/lib/phantom.js` and carry a visible
   "SYNTHETIC PHANTOM" watermark. They are not patient images.
-- **Favicon** (`public/favicon.svg`) is a generic eye icon generated in code with AI assistance.
+- Logo (public/aerosans-logo.png, aerosans-mark.png, favicon-64.png): original team design created with AI assistance.
 - **Eye texture** (`public/textures/eye.png`, 2048×1024 equirectangular): generated with Google Gemini,
   then edited by the team (iris resized, wave artifacts softened). Used as the color map of the 3D globe
   and labeled "Eye texture: AI-generated (Gemini), edited" in the 3D view.

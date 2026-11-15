@@ -7,8 +7,9 @@ import { CO2, CO2_OPS_LIMIT_MMHG, RISK_LABELS } from '../config.js';
 
 ChartJS.register(LinearScale, PointElement, LineElement, Tooltip, Legend);
 
-const TEXT = '#93a4c3';
-const GRID = 'rgba(147, 164, 195, 0.15)';
+// Same values as --muted and --border in styles.css.
+const TEXT = '#9AA7BD';
+const GRID = '#24365C';
 const CO2_DATASET_INDEX = 3;
 
 /**

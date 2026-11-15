@@ -1,11 +1,10 @@
 import { DISCLAIMER_TEXT } from '../config.js';
 
-/** Persistent banner shown on every page. */
+/** Thin strip fixed to the bottom of every page. */
 export default function Disclaimer() {
   return (
     <div className="disclaimer" role="note">
-      <span className="disclaimer-icon" aria-hidden="true">⚠</span>
-      <strong>{DISCLAIMER_TEXT}</strong>
+      <strong>{DISCLAIMER_TEXT}</strong> Simulated data where labeled. Not for clinical use.
     </div>
   );
 }
