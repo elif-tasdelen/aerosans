@@ -23,6 +23,9 @@ import {
   EDGE_CENTER_SEARCH_MM,
   EDGE_PEAK_SEARCH_MM,
   EDGE_CONTRAST_REF,
+  EDGE_METHOD,
+  EDGE_PEAK_MIN_WIDTH_MM,
+  EDGE_THRESHOLD_FRACTION,
   CONFIDENCE_HIGH,
   CONFIDENCE_MEDIUM,
   SNAP_RANGE_MM,
@@ -378,19 +381,72 @@ export function gaussianSmooth(values, sigma) {
 
 // --- Edge detection --------------------------------------------------------------------
 
-/** First clear bright peak walking from `start` in direction `dir` up to `stop` (inclusive). */
-function firstPeak(s, start, dir, stop, minValue, minContrast) {
+/** Width (samples) of the peak at `index` at half of its height above `minValue`. */
+function halfHeightWidth(s, index, minValue) {
+  const level = minValue + 0.5 * (s[index] - minValue);
+  let a = index;
+  let b = index;
+  while (a > 0 && s[a - 1] >= level) a--;
+  while (b < s.length - 1 && s[b + 1] >= level) b++;
+  return b - a + 1;
+}
+
+/**
+ * Sheath-wall peak on one side: walking from `start` in direction `dir` up to `stop` (inclusive),
+ * the HIGHEST local maximum that stands at least `minContrast` above `minValue` and is at least
+ * `minPeakWidth` samples wide at half height. Narrow speckle peaks are skipped. The window end
+ * counts as a candidate when the profile is still rising there.
+ */
+function wallPeak(s, start, dir, stop, minValue, minContrast, minPeakWidth) {
+  const candidates = [];
+  for (let i = start + dir; dir > 0 ? i <= stop : i >= stop; i += dir) {
+    const prev = s[i - dir];
+    const next = i === stop ? -Infinity : s[i + dir];
+    if (s[i] >= prev && s[i] > next) candidates.push(i);
+  }
+  candidates.sort((p, q) => s[q] - s[p]);
+  for (const i of candidates) {
+    if (s[i] - minValue < minContrast) break;
+    if (halfHeightWidth(s, i, minValue) >= minPeakWidth) return { index: i, value: s[i] };
+  }
+  return null;
+}
+
+/** First point, walking from `from` towards `to`, where the profile reaches `level` (sub-sample). */
+function crossing(s, from, to, level) {
+  const dir = to > from ? 1 : -1;
+  for (let i = from; i !== to; i += dir) {
+    const a = s[i];
+    const b = s[i + dir];
+    if (b >= level) return b === a ? i + dir : i + (dir * (level - a)) / (b - a);
+  }
+  return null;
+}
+
+/** Steepest dark→bright point between `from` (band minimum) and `to` (wall peak), sub-sample. */
+function steepest(s, from, to) {
+  const dir = to > from ? 1 : -1;
+  const lo = Math.max(1, Math.min(from, to));
+  const hi = Math.min(s.length - 2, Math.max(from, to));
+  const grad = (i) => (dir * (s[i + 1] - s[i - 1])) / 2;
   let best = -Infinity;
   let bestI = -1;
-  for (let i = start + dir; dir > 0 ? i <= stop : i >= stop; i += dir) {
-    if (s[i] > best) {
-      best = s[i];
+  for (let i = lo; i <= hi; i++) {
+    const g = grad(i);
+    if (g > best) {
+      best = g;
       bestI = i;
-    } else if (best - minValue >= minContrast && s[i] < best - 0.25 * (best - minValue)) {
-      break; // clearly past the peak
     }
   }
-  return bestI >= 0 && best - minValue >= minContrast ? { index: bestI, value: best } : null;
+  if (bestI < 0 || !(best > 0)) return null;
+  // Parabola through the gradient at bestI − 1, bestI, bestI + 1.
+  if (bestI > 1 && bestI < s.length - 2) {
+    const g0 = grad(bestI - 1);
+    const g2 = grad(bestI + 1);
+    const denom = g0 - 2 * best + g2;
+    if (denom < 0) return bestI + (0.5 * (g0 - g2)) / denom;
+  }
+  return bestI;
 }
 
 export function confidenceLevel(score) {
@@ -402,9 +458,11 @@ export function confidenceLevel(score) {
 /**
  * Sheath edges in a profile across the nerve.
  * 1. darkest point within ±centerSearch of the axis (nerve + subarachnoid band);
- * 2. first bright peak (hyperechoic dura) on each side, within ±peakSearch of the axis;
- * 3. each edge = 50 % crossing between the band minimum and that side's peak (sub-sample),
- *    i.e. the inner edge of the dura;
+ * 2. the highest sufficiently wide bright peak (hyperechoic dura) on each side, within ±peakSearch
+ *    of the axis;
+ * 3. each edge, between the band minimum and that side's peak (sub-sample), is either
+ *    - method 'fraction': where the profile crosses `fraction` of the way from minimum to peak, or
+ *    - method 'gradient': the steepest dark→bright point;
  * 4. confidence 0–1 from contrast, symmetry around the axis and a plausible width.
  * All distances are in samples (1 sample = 1 px).
  */
@@ -417,6 +475,9 @@ export function detectSheathEdges(values, {
   sigma = 0,
   minContrast = EDGE_MIN_CONTRAST,
   contrastRef = EDGE_CONTRAST_REF,
+  minPeakWidth = 0,
+  method = EDGE_METHOD,
+  fraction = EDGE_THRESHOLD_FRACTION,
 }) {
   const fail = (reason) => ({ ok: false, reason, confidence: 0, level: 'low' });
   const n = values.length;
@@ -434,25 +495,18 @@ export function detectSheathEdges(values, {
   }
   if (minIndex < 0) return fail('No dark band near the axis.');
 
-  const leftPeak = firstPeak(s, minIndex, -1, Math.max(0, Math.round(c - peakSearch)), minValue, minContrast);
-  const rightPeak = firstPeak(s, minIndex, 1, Math.min(n - 1, Math.round(c + peakSearch)), minValue, minContrast);
+  const leftPeak = wallPeak(s, minIndex, -1, Math.max(0, Math.round(c - peakSearch)), minValue, minContrast, minPeakWidth);
+  const rightPeak = wallPeak(s, minIndex, 1, Math.min(n - 1, Math.round(c + peakSearch)), minValue, minContrast, minPeakWidth);
   if (!leftPeak || !rightPeak) return fail('No bright sheath wall found on both sides.');
 
-  const tL = (minValue + leftPeak.value) / 2;
-  const tR = (minValue + rightPeak.value) / 2;
-  let left = null;
-  for (let i = minIndex; i > leftPeak.index; i--) {
-    if (s[i - 1] >= tL) {
-      left = i - 1 + (s[i - 1] - tL) / (s[i - 1] - s[i]);
-      break;
-    }
-  }
-  let right = null;
-  for (let i = minIndex; i < rightPeak.index; i++) {
-    if (s[i + 1] >= tR) {
-      right = i + (tR - s[i]) / (s[i + 1] - s[i]);
-      break;
-    }
+  let left;
+  let right;
+  if (method === 'gradient') {
+    left = steepest(s, minIndex, leftPeak.index);
+    right = steepest(s, minIndex, rightPeak.index);
+  } else {
+    left = crossing(s, minIndex, leftPeak.index, minValue + fraction * (leftPeak.value - minValue));
+    right = crossing(s, minIndex, rightPeak.index, minValue + fraction * (rightPeak.value - minValue));
   }
   if (left === null || right === null) return fail('Edge crossing not found.');
 
@@ -501,6 +555,7 @@ export function detectionParams(mmPerPx) {
     halfWidthPx: px(PROFILE_HALF_WIDTH_MM),
     stripHalfPx: px(PROFILE_STRIP_HALF_MM),
     sigma: px(PROFILE_SIGMA_MM),
+    minPeakWidth: px(EDGE_PEAK_MIN_WIDTH_MM),
     centerSearch: px(EDGE_CENTER_SEARCH_MM),
     peakSearch: px(EDGE_PEAK_SEARCH_MM),
     minWidth: px(ONSD_MIN_PLAUSIBLE_MM),
@@ -522,7 +577,7 @@ export function withEdgeOffsets(offsetA, offsetB, mmPerPx = null) {
  * Without a scale (mmPerPx null), `depthPt` (clicked by the user) is projected onto the axis.
  * Edge offsets are in px along `n` from the measurement centre.
  */
-export function measureOnAxis(image, { globePt, axisPt, mmPerPx = null, depthPt = null, depthMm = MEASURE_DEPTH_MM }) {
+export function measureOnAxis(image, { globePt, axisPt, mmPerPx = null, depthPt = null, depthMm = MEASURE_DEPTH_MM, edge = {} }) {
   const { u, n } = axisFrame(globePt, axisPt);
   const scaled = mmPerPx > 0;
   const p = detectionParams(mmPerPx);
@@ -550,7 +605,7 @@ export function measureOnAxis(image, { globePt, axisPt, mmPerPx = null, depthPt 
   }
 
   const { values, half } = sampleNormalProfile(image, { center, u, n, halfWidthPx: p.halfWidthPx, stripHalfPx: p.stripHalfPx });
-  const det = detectSheathEdges(values, { ...p, centerIndex: half });
+  const det = detectSheathEdges(values, { ...p, ...edge, centerIndex: half });
   const result = { ...base, halfWidthPx: half, detection: det, confidence: det.confidence, level: det.level };
   if (!det.ok || det.level === 'low') {
     return { ...result, ok: false, reason: det.reason ?? 'Low detection confidence.' };

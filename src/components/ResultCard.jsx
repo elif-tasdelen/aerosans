@@ -2,6 +2,7 @@ import {
   ACTIONS,
   HOW_TO_SCAN,
   MESSAGES,
+  METHOD_LABELS,
   ONSD_BORDERLINE_MM,
   ONSD_HIGH_MM,
   RISK_LABELS,
@@ -90,7 +91,7 @@ export default function ResultCard({ result, onRecalibrate, onConfirmScale, co2 
       <dl className="result-meta">
         <div>
           <dt>Method</dt>
-          <dd>{method}</dd>
+          <dd>{METHOD_LABELS[method] ?? method}</dd>
         </div>
         <div>
           <dt>Detection confidence</dt>

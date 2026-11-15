@@ -20,10 +20,49 @@ export const EDGE_MIN_CONTRAST = 20;
 /** The second axis click must be at least this far from the globe point (mm, or px without a scale). */
 export const AXIS_MIN_DISTANCE_MM = 4;
 export const AXIS_MIN_DISTANCE_PX = 20;
-/** The profile is averaged over a strip of ±this distance along the nerve axis (mm). */
-export const PROFILE_STRIP_HALF_MM = 0.5;
-/** Gaussian smoothing of the profile (mm). */
-export const PROFILE_SIGMA_MM = 0.15;
+/**
+ * The profile is averaged over a strip of ±this distance along the nerve axis (mm): the rows from
+ * 2.0 to 4.0 mm behind the globe; the measurement itself stays at 3 mm. 1.0 mm (was 0.5 mm) averages
+ * out the speckle of real ultrasound images.
+ */
+export const PROFILE_STRIP_HALF_MM = 1.0;
+/** Gaussian smoothing of the profile (mm). 0.3 mm (was 0.15 mm) is about one speckle grain on real images. */
+export const PROFILE_SIGMA_MM = 0.3;
+/** A bright peak must be at least this wide at half of its height to count as the sheath wall (mm). */
+export const EDGE_PEAK_MIN_WIDTH_MM = 0.3;
+/**
+ * Edge method. 'fraction': the point where the profile crosses EDGE_THRESHOLD_FRACTION of the way
+ * from the band minimum to the wall peak. 'gradient': the steepest dark→bright point between the
+ * band minimum and the wall peak (sub-pixel, parabola fit).
+ */
+export const EDGE_METHOD = 'fraction';
+export const EDGE_THRESHOLD_FRACTION = 0.65;
+
+// --- Preprocessing (src/lib/preprocess.js) ----------------------------------------------
+/** Coloured annotation: RGB channel spread above this (0–255). */
+export const PRE_COLOR_DIFF = 60;
+/** Thin white marks (calipers, digits): brighter than this, and this much above the local mean. */
+export const PRE_MARK_MIN_VALUE = 245;
+export const PRE_MARK_CONTRAST = 80;
+/** …and in a connected component smaller than (this many mm)², or this many px² without a scale. */
+export const PRE_MARK_AREA_MM = 1.5;
+export const PRE_MARK_AREA_PX = 600;
+/** Scan-area (sector) mask: block size and the minimum grey-level standard deviation of a textured block. */
+export const PRE_SECTOR_BLOCK_PX = 8;
+export const PRE_SECTOR_MIN_STD = 5;
+/** Textured groups at least this fraction of the largest one belong to the scan area. */
+export const PRE_SECTOR_GROUP_FRACTION = 0.15;
+/** Median filter window for speckle reduction before globe / nerve detection (mm, at least 3 px). */
+export const PRE_MEDIAN_WINDOW_MM = 0.3;
+
+// --- Posterior-wall globe detection (src/lib/autodetect.js) ---------------------------------
+/** The vitreous is a dark run of at least this length along a scan column (mm). */
+export const WALL_MIN_VITREOUS_MM = 8;
+/** Accepted globe radius (mm). */
+export const WALL_RADIUS_RANGE_MM = [8, 16];
+/** The nerve is searched within ±this distance of the posterior pole (mm), this deep behind the wall (mm). */
+export const WALL_NERVE_HALF_WIDTH_MM = 6;
+export const WALL_NERVE_DEPTH_MM = [2, 10];
 /** The band minimum is searched within ±this distance of the axis (mm). */
 export const EDGE_CENTER_SEARCH_MM = 2;
 /**
@@ -77,6 +116,18 @@ export const MESSAGES = {
   autoUnreliable: 'Auto-detection is unreliable on this image — please pick the points manually.',
   autoMeasureDone: 'Auto-Measure complete. Check the overlay; drag the edge markers along the measurement line to fine-tune.',
   autoMeasureFailed: 'Auto-Measure could not measure this image reliably — please pick the points manually.',
+  autoMeasureUncertain:
+    'Auto-detection is uncertain on this image — check the yellow axis and edges, drag to adjust, then confirm.',
+  realImageNote: 'Real ultrasound: please verify the edges before using the result.',
+};
+
+/** How the measurement method is shown in the result card. */
+export const METHOD_LABELS = {
+  'auto-measure': 'Auto-Measure',
+  'auto-measure (adjusted)': 'Auto-Measure (adjusted)',
+  manual: 'Manual',
+  auto: 'Manual points, automatic edges',
+  'auto (adjusted)': 'Manual points, automatic edges (adjusted)',
 };
 
 /** Color of the 3 mm measurement marker (2D measurement line and the ring in the 3D eye). */

@@ -98,6 +98,8 @@ Auto-detection was tuned on synthetic phantoms. Real-image performance is evalua
 
 On real ultrasound images, automatic edges may sit inside expert caliper positions on blurred sheath borders, and auto-detection (beta) may fail; draggable edges and manual picking are provided.
 
+Auto-Measure was developed and validated on synthetic phantoms (clean and realistic, tilted ±20°: error at most 0.16 mm with the default edge method). On a small set of 6 public real ultrasound images it placed the posterior globe point within 1.5 mm of the reference point in 3 of 6 images and within 2 mm in 5 of 6. On the 3 images with expert calipers it measured ONSD with a mean absolute error of 0.60 mm (0.71 mm when the globe point was given by hand), mostly because automatic edges sit inside the expert caliper positions. Real images should always be checked and adjusted by the user; when detection is uncertain the app shows a proposal to confirm instead of a result.
+
 Cabin CO₂ values are simulated and shown as context only; no causal relationship with ONSD is modeled in code.
 
 ## AI Usage Declaration

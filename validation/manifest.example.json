@@ -1,9 +1,12 @@
 [
   {
-    "file": "example1.png",
-    "source": "Author et al., Journal, Year, Fig. N — CC BY 4.0 — https://doi.org/...",
+    "file": "example.png",
+    "size": [800, 600],
+    "crop": [0, 0, 800, 600],
     "mmPerPx": 0.05,
-    "expertOnsdMm": 4.2,
-    "notes": "expert calipers visible; scale from the depth bar"
+    "expertOnsdMm": 5.2,
+    "expertGlobePoint": { "x": 400, "y": 300 },
+    "excludeFromMae": false,
+    "notes": "size, crop, expertOnsdMm, expertGlobePoint and excludeFromMae are optional"
   }
 ]

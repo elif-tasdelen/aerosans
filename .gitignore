@@ -11,6 +11,7 @@ dist
 validation/images/
 validation/manifest.json
 validation/report.md
+validation/out/
 
 # Internal working files (kept locally, not published)
 CLAUDE.md

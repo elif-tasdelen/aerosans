@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { generatePhantom } from '../lib/phantom.js';
 import { autodetect } from '../lib/autodetect.js';
 import {
@@ -16,7 +16,7 @@ import {
   withEdgeOffsets,
 } from '../lib/measure.js';
 import { buildResultState } from '../lib/result.js';
-import { autoMeasure } from '../lib/autoMeasure.js';
+import { autoMeasure, AUTO_MEASURE_METHOD, prepareSource } from '../lib/autoMeasure.js';
 import { co2Status, latestCo2 } from '../lib/cabinCo2.js';
 import { buildReportModel } from '../lib/report.js';
 import {
@@ -107,7 +107,8 @@ function loadImageFile(file) {
         pixels[i] = Math.round(0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]);
       }
       URL.revokeObjectURL(url);
-      resolve({ pixels, width, height, scaleFactor: scale });
+      // The RGBA copy is kept so coloured annotations can be recognised and removed before measuring.
+      resolve({ pixels, rgba, width, height, scaleFactor: scale });
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -200,6 +201,13 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
   const scaled = calibration?.mode === 'scaleBar' || calibration?.mode === 'depth';
   const mmPerPx = scaled ? calibration.mmPerPx : null;
   const needClicks = calibration?.mode === 'none' ? 3 : 2;
+  // Uploaded images are cleaned once per scale (annotations removed, scan-area mask, median filter);
+  // detection and the edge profile use the cleaned copies, the canvas shows the original.
+  const prepared = useMemo(
+    () => (source?.kind === 'upload' && mmPerPx > 0 ? prepareSource(source, { mmPerPx }) : null),
+    [source, mmPerPx]
+  );
+  const measureImage = prepared?.measure ?? source;
   const hasEdges = measurement?.leftOffset != null && measurement?.rightOffset != null;
   const manual = measurement != null && !hasEdges;
 
@@ -337,19 +345,19 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
     }
   };
 
-  const runMeasure = (clickList, { snap = true } = {}) => {
+  const runMeasure = (clickList, { snap = true, method = 'auto' } = {}) => {
     try {
       let globe = clickList[0];
       const axisPt = clickList[1];
       if (scaled && snap) {
         const { u, n } = axisFrame(globe, axisPt);
-        globe = snapGlobePoint(source, globe, u, n, mmPerPx);
+        globe = snapGlobePoint(measureImage, globe, u, n, mmPerPx);
       }
       setGlobePt(globe);
-      const res = measureOnAxis(source, { globePt: globe, axisPt, mmPerPx, depthPt: clickList[2] ?? null });
+      const res = measureOnAxis(measureImage, { globePt: globe, axisPt, mmPerPx, depthPt: clickList[2] ?? null });
       setManualPts([]);
       if (res.ok) {
-        setMeasurement({ ...res, method: 'auto' });
+        setMeasurement({ ...res, method });
         setNotice(MESSAGES.edgesAuto);
       } else {
         setMeasurement({ ...res, leftOffset: null, rightOffset: null, widthPx: null, onsdMm: null, method: 'manual' });
@@ -400,20 +408,23 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
 
   const runAutodetect = () => {
     clearMeasurement();
-    const res = autodetect(source, { mmPerPx: scaled ? mmPerPx : null });
+    const res = autodetect(prepared?.detect ?? source, { mmPerPx: scaled ? mmPerPx : null, sector: prepared?.sector ?? null });
     setProposal(res);
     setNotice(res.level === 'low' || !res.globePoint ? MESSAGES.autoUnreliable : MESSAGES.autoDetected);
   };
 
   const acceptProposal = () => {
     const pts = [proposal.globePoint, proposal.axisPoint];
+    const fromAutoMeasure = Boolean(proposal.fromAutoMeasure);
+    if (fromAutoMeasure) setAutoCircle(proposal.debug?.circle ?? null);
     setProposal(null);
     setClicks(pts);
     if (calibration?.mode === 'none') {
       setNotice(MESSAGES.clickDepth);
       return;
     }
-    runMeasure(pts, { snap: false }); // the detected point is already refined
+    // The detected point is already refined.
+    runMeasure(pts, { snap: false, method: fromAutoMeasure ? AUTO_MEASURE_METHOD : 'auto' });
   };
 
   const repickManually = () => {
@@ -425,10 +436,23 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
   // --- Auto-Measure: one click from a calibrated image to a result ------------------------
 
   const finishAutoMeasure = () => {
-    const res = autoMeasure(source, { mmPerPx });
+    const res = autoMeasure(source, { mmPerPx, prepared });
     setScanning(false);
     if (!res.ok) {
-      setNotice(MESSAGES.autoMeasureFailed);
+      if (res.points) {
+        // Uncertain: show the globe and axis as a proposal the user can confirm or replace.
+        setProposal({
+          globePoint: res.points.globePoint,
+          axisPoint: res.points.axisPoint,
+          level: 'low',
+          confidence: res.detection?.confidence ?? 0,
+          debug: { circle: res.circle },
+          fromAutoMeasure: true,
+        });
+        setNotice(MESSAGES.autoMeasureUncertain);
+      } else {
+        setNotice(`${MESSAGES.autoMeasureFailed} ${MESSAGES.clickGlobe}`);
+      }
       return;
     }
     setAutoCircle(res.circle);
@@ -622,11 +646,12 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
       (minima ?? []).forEach((m) => ctx.fillRect(m.x - 1, m.y - 1, 2, 2));
       if (proposal.globePoint && proposal.axisPoint) {
         const { u } = axisFrame(proposal.globePoint, proposal.axisPoint);
-        drawLine(ctx, pointAlongAxis(proposal.globePoint, u, -20), pointAlongAxis(proposal.globePoint, u, 260), '#22d3ee', 1.5, [5, 5]);
+        const axisColor = proposal.fromAutoMeasure ? MEASURE_MARKER_COLOR : '#22d3ee';
+        drawLine(ctx, pointAlongAxis(proposal.globePoint, u, -20), pointAlongAxis(proposal.globePoint, u, 260), axisColor, 1.5, [5, 5]);
         drawCross(ctx, proposal.globePoint, '#f472b6', 9);
         drawCross(ctx, proposal.axisPoint, '#22d3ee', 7);
       }
-      const label = `Auto-detected (confidence: ${proposal.level})`;
+      const label = proposal.fromAutoMeasure ? 'Proposal — confirm or measure manually' : `Auto-detected (confidence: ${proposal.level})`;
       drawLabel(ctx, label, 16, source.height - 52, proposal.level === 'low' ? '#fca5a5' : '#7dd3fc');
     }
 
@@ -891,19 +916,23 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
 
         {proposal && (
           <div className="proposal-box">
-            <span>
-              Auto-detected (confidence: <strong>{proposal.level}</strong>
-              {proposal.globePoint ? `, ${Math.round(proposal.confidence * 100)}%` : ''})
-            </span>
+            {proposal.fromAutoMeasure ? (
+              <span>Proposed globe point and nerve axis (uncertain)</span>
+            ) : (
+              <span>
+                Auto-detected (confidence: <strong>{proposal.level}</strong>
+                {proposal.globePoint ? `, ${Math.round(proposal.confidence * 100)}%` : ''})
+              </span>
+            )}
             <button
               className="btn btn-primary"
               onClick={acceptProposal}
-              disabled={!proposal.globePoint || proposal.level === 'low'}
+              disabled={!proposal.globePoint || (proposal.level === 'low' && !proposal.fromAutoMeasure)}
             >
-              Accept
+              {proposal.fromAutoMeasure ? 'Confirm' : 'Accept'}
             </button>
             <button className="btn btn-ghost" onClick={repickManually}>
-              Re-pick manually
+              {proposal.fromAutoMeasure ? 'Measure manually' : 'Re-pick manually'}
             </button>
           </div>
         )}
@@ -955,6 +984,9 @@ export default function MeasureScreen({ onResult, crew, series = [], co2 = [] })
             </button>
           )}
         </div>
+        {source?.kind === 'upload' && (
+          <p className="small muted real-note">{MESSAGES.realImageNote}</p>
+        )}
         {source?.kind === 'phantom' && (
           <p className="small muted">
             Simulated data — synthetic phantom (seed {source.seed}, {source.realism}, tilt {source.tiltDeg}°).

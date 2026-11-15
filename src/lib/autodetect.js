@@ -4,13 +4,19 @@
 // Images are { pixels, width, height } greyscale (0–255). Returned points are in the image's own
 // pixel coordinates (pixel i covers [i, i + 1)).
 //
-// Steps: downscale (max width 400) + Gaussian blur → Otsu threshold → largest dark component in the
-// upper 75 % that does not touch the left/right borders (the globe) → robust algebraic circle fit →
-// nerve axis from the darkest (smoothed) column of each row below the globe, fitted with RANSAC →
+// Steps: downscale (max width 400) + Gaussian blur → Otsu threshold inside the scan area → globe,
+// found in two ways:
+//   "dark-blob":      largest dark component in the upper 75 % that does not touch the left/right
+//                     borders → robust algebraic circle fit;
+//   "posterior-wall": (needs a scale) per scan column, the first strong dark→bright step after a
+//                     long dark run (vitreous) → RANSAC circle fit with a radius of 8–16 mm;
+// → nerve axis from the darkest (smoothed) column of each row below the globe, fitted with RANSAC →
 // globe point = where the axis leaves the circle, refined to the strongest dark→bright step.
+// The result with the higher confidence wins (debug.method).
 
 import { axisFrame, confidenceLevel, gaussianSmooth, sampleBilinear } from './measure.js';
 import { createRng } from './phantom.js';
+import { WALL_MIN_VITREOUS_MM, WALL_NERVE_DEPTH_MM, WALL_NERVE_HALF_WIDTH_MM, WALL_RADIUS_RANGE_MM } from '../config.js';
 
 export const AUTODETECT = {
   maxWidth: 400,
@@ -300,38 +306,16 @@ function lowFail(reason, debug = {}) {
   return { globePoint: null, axisPoint: null, confidence: 0, level: 'low', reason, debug };
 }
 
-/**
- * Detect the posterior globe point and the nerve axis.
- * @param {{pixels, width, height}} image
- * @param {{ mmPerPx?: number|null }} [options]
- * @returns {{ globePoint, axisPoint, confidence, level, angleDeg?, reason?, debug }}
- */
-export function autodetect(image, { mmPerPx = null } = {}) {
-  const P = AUTODETECT;
-  const scaled = mmPerPx > 0;
-  if (!image || !(image.width > 10) || !(image.height > 10)) return lowFail('Image too small.');
+// --- Globe candidates ------------------------------------------------------------------
 
-  // 1. Preprocess.
-  const small = downscale(image, P.maxWidth);
-  const { w, h } = small;
-  const s = 1 / small.sx; // small px per original px (x and y are almost equal)
-  const blurred = blur(small.data, w, h, P.blurSigma);
-  const toOrig = (p) => ({ x: p.x * small.sx, y: p.y * small.sy });
-
-  // 2. Globe: largest dark component in the upper part, away from the side borders.
-  const t = otsuThreshold(blurred);
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const v of blurred) {
-    lo = Math.min(lo, v);
-    hi = Math.max(hi, v);
-  }
-  if (hi - lo < 15) return lowFail('Image has almost no contrast.');
+/** Path 1 ("dark-blob"): the globe is the largest dark component in the upper part of the scan area. */
+function globeFromDarkBlob(ctx) {
+  const { blurred, w, h, threshold, inSector, P } = ctx;
   const mask = new Uint8Array(w * h);
-  for (let i = 0; i < mask.length; i++) mask[i] = blurred[i] <= t ? 1 : 0;
+  for (let i = 0; i < mask.length; i++) mask[i] = blurred[i] <= threshold && inSector[i] ? 1 : 0;
   const maxRow = Math.max(2, Math.floor(h * P.upperFraction));
   const comp = largestComponent(mask, w, h, maxRow);
-  if (!comp || comp.pixels.length < P.minComponentFraction * w * h) return lowFail('No dark globe region found.');
+  if (!comp || comp.pixels.length < P.minComponentFraction * w * h) return { reason: 'No dark globe region found.' };
 
   // Boundary pixels (excluding the image top edge and the 75 % cut line, which are not real edges).
   const inComp = (x, y) => x >= 0 && y >= 0 && x < w && y < maxRow && comp.label[y * w + x] === comp.id;
@@ -340,14 +324,15 @@ export function autodetect(image, { mmPerPx = null } = {}) {
     const x = p % w;
     const y = (p - x) / w;
     if (y === 0 || y >= maxRow - 1) continue;
+    // The border of the scan area is not a real edge either.
+    if (x === 0 || x === w - 1 || !inSector[p - 1] || !inSector[p + 1] || !inSector[p - w] || !inSector[p + w]) continue;
     if (!inComp(x - 1, y) || !inComp(x + 1, y) || !inComp(x, y - 1) || !inComp(x, y + 1)) boundary.push({ x: x + 0.5, y: y + 0.5 });
   }
-  if (boundary.length < 20) return lowFail('Globe boundary too small.');
+  if (boundary.length < 20) return { reason: 'Globe boundary too small.' };
   const circle = robustCircle(boundary);
-  if (!circle) return lowFail('Circle fit failed.');
-  const residual = Math.sqrt(circleResiduals(circle.points, circle).reduce((a, r) => a + r * r, 0) / circle.points.length) / circle.r;
+  if (!circle) return { reason: 'Circle fit failed.' };
 
-  // 3. Rough posterior point: lowest boundary point within ±30° of straight down.
+  // Rough posterior point: lowest boundary point within ±30° of straight down.
   const cone = Math.cos((P.bottomConeDeg * Math.PI) / 180);
   let rough = { x: circle.cx, y: circle.cy + circle.r };
   let lowest = -Infinity;
@@ -359,14 +344,110 @@ export function autodetect(image, { mmPerPx = null } = {}) {
       rough = p;
     }
   }
+  return { circle, rough };
+}
 
-  // 4. Nerve axis from row minima below the globe (two passes: around the rough point, then the line).
+/**
+ * Path 2 ("posterior-wall", needs a scale): every scan column is walked from the probe side down.
+ * The vitreous is a long dark run (≥ WALL_MIN_VITREOUS_MM); the first strong dark→bright step after
+ * it is a posterior-wall candidate. A circle (radius within WALL_RADIUS_RANGE_MM) is fitted to the
+ * candidates with RANSAC; the posterior pole is the point of the circle farthest from the probe.
+ */
+function globeFromPosteriorWall(ctx) {
+  const { blurred, w, h, threshold, inSector, pxPerMm, rng } = ctx;
+  if (!(pxPerMm > 0)) return { reason: 'Posterior-wall search needs a scale.' };
+  const minRun = WALL_MIN_VITREOUS_MM * pxPerMm;
+  const maxGap = Math.max(1, 0.5 * pxPerMm);
+  const win = Math.max(2, Math.round(1.5 * pxPerMm));
+  const bottomMargin = Math.max(2, pxPerMm);
+  const candidates = [];
+
+  for (let x = 0; x < w; x++) {
+    let top = -1;
+    let bottom = -1;
+    for (let y = 0; y < h; y++) {
+      if (inSector[y * w + x]) {
+        if (top < 0) top = y;
+        bottom = y;
+      }
+    }
+    if (top < 0 || bottom - top < minRun) continue;
+
+    // Longest dark run (short bright gaps are bridged).
+    let best = null;
+    let a = -1;
+    let lastDark = -1;
+    const close = () => {
+      if (a >= 0 && (!best || lastDark - a > best.b - best.a)) best = { a, b: lastDark };
+      a = -1;
+    };
+    for (let y = top; y <= bottom; y++) {
+      if (blurred[y * w + x] <= threshold) {
+        if (a < 0) a = y;
+        lastDark = y;
+      } else if (a >= 0 && y - lastDark > maxGap) {
+        close();
+      }
+    }
+    close();
+    if (!best || best.b - best.a + 1 < minRun) continue;
+    if (best.b >= bottom - bottomMargin) continue; // the dark run reaches the end of the scan area: no wall
+
+    // Strongest dark→bright step around the end of the run.
+    let g = 0;
+    let gy = -1;
+    for (let y = Math.max(top + 1, best.b - win); y <= Math.min(bottom - 1, best.b + win); y++) {
+      const d = blurred[(y + 1) * w + x] - blurred[(y - 1) * w + x];
+      if (d > g) {
+        g = d;
+        gy = y;
+      }
+    }
+    if (gy < 0 || g < 4) continue;
+    candidates.push({ x: x + 0.5, y: gy + 0.5 });
+  }
+  if (candidates.length < 12) return { reason: 'No posterior globe wall found.' };
+
+  // RANSAC circle.
+  const [rMin, rMax] = WALL_RADIUS_RANGE_MM.map((mm) => mm * pxPerMm);
+  const tol = Math.max(1.5, 0.4 * pxPerMm);
+  let bestFit = null;
+  for (let it = 0; it < 400; it++) {
+    const sample = [0, 1, 2].map(() => candidates[Math.floor(rng() * candidates.length)]);
+    const c = fitCircle(sample);
+    if (!c || c.r < rMin || c.r > rMax) continue;
+    const inliers = candidates.filter((p) => Math.abs(Math.hypot(p.x - c.cx, p.y - c.cy) - c.r) <= tol && p.y > c.cy);
+    if (!bestFit || inliers.length > bestFit.inliers.length) bestFit = { c, inliers };
+  }
+  if (!bestFit || bestFit.inliers.length < 10) return { reason: 'Posterior wall does not fit a globe (radius 8–16 mm).' };
+  let circle = bestFit.c;
+  const refit = fitCircle(bestFit.inliers);
+  if (refit && refit.r >= rMin && refit.r <= rMax) circle = refit;
+  const rough = { x: circle.cx, y: circle.cy + circle.r };
+  return {
+    circle: { ...circle, points: bestFit.inliers },
+    rough,
+    wallInlierRatio: bestFit.inliers.length / candidates.length,
+  };
+}
+
+// --- Nerve axis and confidence (shared by both paths) -----------------------------------------
+
+function finishDetection(ctx, globe, method) {
+  const { image, blurred, w, h, small, toOrig, P, scaled, mmPerPx, s, pxPerMm, rng } = ctx;
+  const { circle, rough } = globe;
+  const residual =
+    Math.sqrt(circleResiduals(circle.points, circle).reduce((a, r) => a + r * r, 0) / circle.points.length) / circle.r;
+
+  // Nerve axis from row minima below the globe (two passes: around the rough point, then the line).
   const pxSmall = (mm, px) => (scaled ? (mm / mmPerPx) * s : px * s);
-  const band = [pxSmall(P.axisBandMm[0], P.axisBandPx[0]), pxSmall(P.axisBandMm[1], P.axisBandPx[1])];
-  const halfWin = 0.5 * circle.r;
+  const wall = method === 'posterior-wall';
+  const band = wall
+    ? WALL_NERVE_DEPTH_MM.map((mm) => mm * pxPerMm)
+    : [pxSmall(P.axisBandMm[0], P.axisBandPx[0]), pxSmall(P.axisBandMm[1], P.axisBandPx[1])];
+  const halfWin = wall ? WALL_NERVE_HALF_WIDTH_MM * pxPerMm : 0.5 * circle.r;
   const rowSigma = Math.max(1, 0.12 * circle.r);
   const tol = Math.max(1.5, 0.04 * circle.r);
-  const rng = createRng(7);
   let minima = rowMinima(blurred, w, h, rough.y + band[0], rough.y + band[1], () => rough.x, halfWin, rowSigma);
   let line = ransacLine(minima, tol, rng);
   if (line) {
@@ -374,6 +455,7 @@ export function autodetect(image, { mmPerPx = null } = {}) {
     line = ransacLine(minima, tol, rng) ?? line;
   }
   const debugBase = {
+    method,
     circle: { ...toOrig({ x: circle.cx, y: circle.cy }), r: circle.r * small.sx },
     minima: minima.map(toOrig),
     residual,
@@ -397,8 +479,7 @@ export function autodetect(image, { mmPerPx = null } = {}) {
   }
 
   // Axis direction (pointing down the nerve) in original coordinates.
-  const dirSmall = { x: line.a, y: 1 };
-  const dirOrig = { x: dirSmall.x * small.sx, y: dirSmall.y * small.sy };
+  const dirOrig = { x: line.a * small.sx, y: small.sy };
   const gpOrig0 = toOrig(gpSmall);
   const farOrig = { x: gpOrig0.x + dirOrig.x * 100, y: gpOrig0.y + dirOrig.y * 100 };
   const { u, n } = axisFrame(gpOrig0, farOrig);
@@ -411,34 +492,64 @@ export function autodetect(image, { mmPerPx = null } = {}) {
   const axisDist = scaled ? P.axisPointMm / mmPerPx : P.axisPointPx;
   const axisPoint = { x: globePoint.x + u.x * axisDist, y: globePoint.y + u.y * axisDist };
 
-  // 5. Confidence.
-  const sizeRatio = (2 * circle.r) / w;
-  const [sLo, sHi] = P.globeSizeRange;
-  const sizeScore =
-    sizeRatio < sLo ? clamp01(1 - (sLo - sizeRatio) / sLo) : sizeRatio > sHi ? clamp01(1 - (sizeRatio - sHi) / 0.25) : 1;
+  // Confidence.
   const fitScore = clamp01(1 - residual / 0.05);
-  // Contrast: globe interior vs the tissue beside the nerve below the globe.
-  let inside = 0;
-  let nIn = 0;
-  let below = 0;
-  let nBelow = 0;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const v = blurred[y * w + x];
-      const d = Math.hypot(x + 0.5 - circle.cx, y + 0.5 - circle.cy);
-      if (d < 0.8 * circle.r) {
-        inside += v;
-        nIn++;
-      } else if (y + 0.5 > gpSmall.y + band[0] && y + 0.5 < gpSmall.y + band[1] && Math.abs(x + 0.5 - (line.a * (y + 0.5) + line.b)) > 0.35 * circle.r && Math.abs(x + 0.5 - (line.a * (y + 0.5) + line.b)) < circle.r) {
-        below += v;
-        nBelow++;
+  const inlierScore = clamp01((line.inlierRatio - 0.4) / 0.5);
+  let confidence;
+  let scores;
+  const sizeRatio = (2 * circle.r) / w;
+  if (wall) {
+    // Nerve band vs the tissue beside it, on the rows of the line inliers.
+    const side = [0.35 * halfWin, 0.7 * halfWin];
+    let diff = 0;
+    let rows = 0;
+    for (const m of line.inliers) {
+      const y = Math.min(h - 1, Math.max(0, Math.floor(m.y)));
+      const at = (x) => blurred[y * w + Math.min(w - 1, Math.max(0, Math.round(x)))];
+      let acc = 0;
+      let cnt = 0;
+      for (let d = side[0]; d <= side[1]; d++) {
+        acc += at(m.x - d) + at(m.x + d);
+        cnt += 2;
+      }
+      diff += acc / cnt - at(m.x);
+      rows++;
+    }
+    const contrast = rows ? diff / rows : 0;
+    const contrastScore = clamp01(contrast / 40);
+    const rms = Math.sqrt(line.inliers.reduce((a, m) => a + (m.x - (line.a * m.y + line.b)) ** 2, 0) / line.inliers.length);
+    const linearity = clamp01(1 - rms / tol);
+    confidence = 0.3 * fitScore + 0.25 * inlierScore + 0.25 * contrastScore + 0.2 * linearity;
+    confidence *= clamp01(globe.wallInlierRatio / 0.5);
+    scores = { fit: fitScore, inliers: inlierScore, contrast: contrastScore, linearity, wallInliers: globe.wallInlierRatio };
+  } else {
+    const [sLo, sHi] = P.globeSizeRange;
+    const sizeScore =
+      sizeRatio < sLo ? clamp01(1 - (sLo - sizeRatio) / sLo) : sizeRatio > sHi ? clamp01(1 - (sizeRatio - sHi) / 0.25) : 1;
+    // Contrast: globe interior vs the tissue beside the nerve below the globe.
+    let inside = 0;
+    let nIn = 0;
+    let below = 0;
+    let nBelow = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = blurred[y * w + x];
+        const d = Math.hypot(x + 0.5 - circle.cx, y + 0.5 - circle.cy);
+        const off = Math.abs(x + 0.5 - (line.a * (y + 0.5) + line.b));
+        if (d < 0.8 * circle.r) {
+          inside += v;
+          nIn++;
+        } else if (y + 0.5 > gpSmall.y + band[0] && y + 0.5 < gpSmall.y + band[1] && off > 0.35 * circle.r && off < circle.r) {
+          below += v;
+          nBelow++;
+        }
       }
     }
+    const contrast = nIn && nBelow ? below / nBelow - inside / nIn : 0;
+    const contrastScore = clamp01(contrast / 50);
+    confidence = 0.3 * fitScore + 0.2 * sizeScore + 0.25 * contrastScore + 0.25 * inlierScore;
+    scores = { fit: fitScore, size: sizeScore, contrast: contrastScore, inliers: inlierScore };
   }
-  const contrast = nIn && nBelow ? below / nBelow - inside / nIn : 0;
-  const contrastScore = clamp01(contrast / 50);
-  const inlierScore = clamp01((line.inlierRatio - 0.4) / 0.5);
-  let confidence = 0.3 * fitScore + 0.2 * sizeScore + 0.25 * contrastScore + 0.25 * inlierScore;
   if (missed) confidence *= 0.5;
 
   return {
@@ -447,12 +558,97 @@ export function autodetect(image, { mmPerPx = null } = {}) {
     confidence,
     level: confidenceLevel(confidence),
     angleDeg,
-    debug: {
-      ...debugBase,
-      inlierRatio: line.inlierRatio,
-      sizeRatio,
-      contrast,
-      scores: { fit: fitScore, size: sizeScore, contrast: contrastScore, inliers: inlierScore },
-    },
+    debug: { ...debugBase, inlierRatio: line.inlierRatio, sizeRatio, scores },
   };
+}
+
+/**
+ * Detect the posterior globe point and the nerve axis.
+ * Two ways of finding the globe are tried ("dark-blob" and, with a scale, "posterior-wall"); the
+ * result with the higher confidence is returned and named in `debug.method`.
+ * @param {{pixels, width, height}} image
+ * @param {{ mmPerPx?: number|null, sector?: Uint8Array|null }} [options]  `sector` is an optional
+ *   scan-area mask (1 = inside, same size as the image; see preprocess.js). Pixels outside it are ignored.
+ * @returns {{ globePoint, axisPoint, confidence, level, angleDeg?, reason?, debug }}
+ */
+export function autodetect(image, { mmPerPx = null, sector = null } = {}) {
+  const P = AUTODETECT;
+  const scaled = mmPerPx > 0;
+  if (!image || !(image.width > 10) || !(image.height > 10)) return lowFail('Image too small.');
+
+  // Preprocess.
+  const small = downscale(image, P.maxWidth);
+  const { w, h } = small;
+  const s = 1 / small.sx; // small px per original px (x and y are almost equal)
+  const blurred = blur(small.data, w, h, P.blurSigma);
+  const toOrig = (p) => ({ x: p.x * small.sx, y: p.y * small.sy });
+
+  const inSector = new Uint8Array(w * h).fill(1);
+  if (sector) {
+    for (let y = 0; y < h; y++) {
+      const oy = Math.min(image.height - 1, Math.floor((y + 0.5) * small.sy));
+      for (let x = 0; x < w; x++) {
+        const ox = Math.min(image.width - 1, Math.floor((x + 0.5) * small.sx));
+        inSector[y * w + x] = sector[oy * image.width + ox] ? 1 : 0;
+      }
+    }
+  }
+  let lo = Infinity;
+  let hi = -Infinity;
+  let count = 0;
+  for (let i = 0; i < blurred.length; i++) {
+    if (!inSector[i]) continue;
+    count++;
+    lo = Math.min(lo, blurred[i]);
+    hi = Math.max(hi, blurred[i]);
+  }
+  if (!count || hi - lo < 15) return lowFail('Image has almost no contrast.');
+  const inside = sector ? blurred.filter((_, i) => inSector[i]) : blurred;
+  const threshold = otsuThreshold(inside);
+
+  const ctx = {
+    image,
+    small,
+    w,
+    h,
+    s,
+    blurred,
+    toOrig,
+    P,
+    scaled,
+    mmPerPx,
+    inSector,
+    threshold,
+    pxPerMm: scaled ? s / mmPerPx : null,
+    rng: createRng(7),
+  };
+
+  const results = [];
+  const reasons = [];
+  let fallback = null;
+  for (const [method, find] of [
+    ['dark-blob', globeFromDarkBlob],
+    ['posterior-wall', globeFromPosteriorWall],
+  ]) {
+    if (method === 'posterior-wall' && !scaled) continue;
+    ctx.rng = createRng(7);
+    const globe = find(ctx);
+    if (!globe.circle) {
+      reasons.push(`${method}: ${globe.reason}`);
+      continue;
+    }
+    const res = finishDetection(ctx, globe, method);
+    if (res.globePoint) results.push(res);
+    else {
+      reasons.push(`${method}: ${res.reason}`);
+      fallback = fallback ?? res;
+    }
+  }
+  if (!results.length) {
+    const base = fallback ?? lowFail(reasons[0] ?? 'Globe not found.');
+    return { ...base, debug: { ...base.debug, rejected: reasons } };
+  }
+  results.sort((a, b) => b.confidence - a.confidence);
+  const tried = results.map((r) => ({ method: r.debug.method, confidence: r.confidence }));
+  return { ...results[0], debug: { ...results[0].debug, tried, rejected: reasons } };
 }
